@@ -16,7 +16,7 @@ npx @yigitkonur/parasut-mcp-server
 
 ---
 
-## what it is
+## what it does
 
 a pnpm monorepo with two packages:
 
