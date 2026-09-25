@@ -224,13 +224,27 @@ export class OAuthManager {
   /**
    * Refreshes the token using the refresh token.
    */
-  async refreshToken(refreshToken: string): Promise<OAuthToken> {
+  async refreshToken(refreshToken?: string): Promise<OAuthToken> {
+    const tokenToUse =
+      refreshToken ??
+      (await this.storage.get())?.refreshToken ??
+      this.credentials.refreshToken;
+
+    if (!tokenToUse) {
+      throw new ParasutAuthError([
+        {
+          title: 'No Refresh Token',
+          detail: 'No refresh token available to refresh access token',
+        },
+      ]);
+    }
+
     // Prevent concurrent refresh attempts
     if (this.refreshPromise) {
       return this.refreshPromise;
     }
 
-    this.refreshPromise = this.performRefresh(refreshToken);
+    this.refreshPromise = this.performRefresh(tokenToUse);
 
     try {
       const token = await this.refreshPromise;

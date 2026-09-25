@@ -20,6 +20,7 @@ export interface TransportConfig {
     headers?: Record<string, string> | undefined;
     fetch?: typeof fetch | undefined;
     fetchOptions?: (RequestInit & Record<string, any>) | undefined;
+    onUnauthorized?: (() => Promise<string | undefined>) | undefined;
 }
 /**
  * Returns proxy URL configured via environment variables, if any.

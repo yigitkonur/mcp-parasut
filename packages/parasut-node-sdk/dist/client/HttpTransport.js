@@ -4,7 +4,7 @@
  * Provides a native fetch wrapper with interceptors, error handling,
  * and JSON:API content type support.
  */
-import { createApiError, ParasutNetworkError, ParasutTimeoutError, } from './errors.js';
+import { createApiError, ParasutAuthError, ParasutNetworkError, ParasutTimeoutError, } from './errors.js';
 /**
  * Returns proxy URL configured via environment variables, if any.
  */
@@ -119,6 +119,25 @@ export class HttpTransport {
             return response;
         }
         catch (error) {
+            if (error instanceof ParasutAuthError && this.config.onUnauthorized) {
+                try {
+                    const refreshedToken = await this.config.onUnauthorized();
+                    if (refreshedToken) {
+                        const retriedConfig = {
+                            ...processedConfig,
+                            headers: {
+                                ...processedConfig.headers,
+                                Authorization: `Bearer ${refreshedToken}`,
+                            },
+                        };
+                        const response = await this.executeRequest(retriedConfig);
+                        return response;
+                    }
+                }
+                catch {
+                    // If refresh fails, fall through to default error handling
+                }
+            }
             // Apply error interceptors
             let processedError = error instanceof Error ? error : new Error(String(error));
             for (const interceptor of this.errorInterceptors) {

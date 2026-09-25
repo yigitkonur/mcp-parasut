@@ -7,6 +7,7 @@
 
 import {
   createApiError,
+  ParasutAuthError,
   ParasutNetworkError,
   ParasutTimeoutError,
 } from './errors.js';
@@ -32,6 +33,7 @@ export interface TransportConfig {
   headers?: Record<string, string> | undefined;
   fetch?: typeof fetch | undefined;
   fetchOptions?: (RequestInit & Record<string, any>) | undefined;
+  onUnauthorized?: (() => Promise<string | undefined>) | undefined;
 }
 
 /**
@@ -180,6 +182,25 @@ export class HttpTransport {
       const response = await this.executeRequest(processedConfig);
       return response as T;
     } catch (error) {
+      if (error instanceof ParasutAuthError && this.config.onUnauthorized) {
+        try {
+          const refreshedToken = await this.config.onUnauthorized();
+          if (refreshedToken) {
+            const retriedConfig = {
+              ...processedConfig,
+              headers: {
+                ...processedConfig.headers,
+                Authorization: `Bearer ${refreshedToken}`,
+              },
+            };
+            const response = await this.executeRequest(retriedConfig);
+            return response as T;
+          }
+        } catch {
+          // If refresh fails, fall through to default error handling
+        }
+      }
+
       // Apply error interceptors
       let processedError = error instanceof Error ? error : new Error(String(error));
       for (const interceptor of this.errorInterceptors) {

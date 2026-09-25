@@ -70,7 +70,7 @@ export declare class OAuthManager {
     /**
      * Refreshes the token using the refresh token.
      */
-    refreshToken(refreshToken: string): Promise<OAuthToken>;
+    refreshToken(refreshToken?: string): Promise<OAuthToken>;
     /**
      * Clears the stored token.
      */

@@ -116,6 +116,12 @@ export class ParasutClient {
             timeout: config.timeout ?? 30_000,
             ...(config.fetch !== undefined && { fetch: config.fetch }),
             ...(config.fetchOptions !== undefined && { fetchOptions: config.fetchOptions }),
+            onUnauthorized: this.oauth
+                ? async () => {
+                    const token = await this.oauth.refreshToken();
+                    return token.accessToken;
+                }
+                : undefined,
         };
         this.transport = new HttpTransport(transportConfig);
         // Add auth interceptor
@@ -150,11 +156,11 @@ export class ParasutClient {
      * Gets a valid access token.
      */
     async getToken() {
-        if (this.staticToken) {
-            return this.staticToken;
-        }
         if (this.oauth) {
             return this.oauth.getValidToken();
+        }
+        if (this.staticToken) {
+            return this.staticToken;
         }
         throw new ParasutAuthError([
             { title: 'No Token', detail: 'No authentication method configured' },

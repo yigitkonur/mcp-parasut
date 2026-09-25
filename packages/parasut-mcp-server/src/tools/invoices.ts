@@ -812,41 +812,58 @@ export async function handleInvoicePdf(args: unknown): Promise<ToolResponse> {
     const params = InvoicePdfSchema.parse(args);
     const client = getClient();
 
-    // First, try to find an existing e-archive for this invoice
-    const eArchives = await client.eArchives.list({
-      page: { number: 1, size: 25 },
+    // Check if the invoice exists and inspect active_e_document relationship
+    const invoice = await client.salesInvoices.get(params.id, {
+      include: ['active_e_document'],
     });
 
-    // Look for an e-archive associated with this invoice
-    // If found, get its PDF
-    for (const archive of eArchives.data) {
-      if (archive.attributes.printable_url) {
+    if (!invoice.data) {
+      return formatNotFound('Invoice', params.id, [
+        { action: 'Search invoices', example: 'search_invoices()' },
+      ]);
+    }
+
+    const activeDoc = (invoice.data.relationships as any)?.active_e_document?.data;
+    if (activeDoc?.id) {
+      if (activeDoc.type === 'e_archives') {
+        const result = await client.eArchives.pdf(activeDoc.id);
         return formatSuccess({
-          url: archive.attributes.printable_url,
-          note: 'PDF URL from e-archive',
+          invoice_id: params.id,
+          e_archive_id: activeDoc.id,
+          url: result.url,
+          expires_at: result.expiresAt,
         }, {
-          summary: 'PDF found',
-          notes: ['This is the e-archive PDF for the invoice'],
+          summary: `e-Archive PDF available for Invoice #${invoice.data.attributes.invoice_no ?? params.id}`,
+        });
+      } else if (activeDoc.type === 'e_invoices') {
+        const result = await client.eInvoices.pdf(activeDoc.id);
+        return formatSuccess({
+          invoice_id: params.id,
+          e_invoice_id: activeDoc.id,
+          url: result.url,
+          expires_at: result.expiresAt,
+        }, {
+          summary: `e-Invoice PDF available for Invoice #${invoice.data.attributes.invoice_no ?? params.id}`,
         });
       }
     }
 
-    // If no e-archive found, explain how to generate PDF
+    // If no active e-document found, explain how to generate PDF
     return formatSuccess({
       invoice_id: params.id,
       pdf_available: false,
-      message: 'No PDF found. Generate PDF by sending as e-archive first.',
+      message: 'No PDF found. This invoice has not been issued as an e-document (e-archive or e-invoice) yet.',
     }, {
       summary: 'No PDF available yet',
       nextSteps: [
         {
-          action: 'Send as e-archive to generate PDF',
+          action: 'Send as e-archive or e-invoice to generate official PDF',
           example: `send_earchive(invoice_id="${params.id}")`,
         },
       ],
       notes: [
-        'Invoice PDFs are generated through the e-archive system',
-        'After sending as e-archive, a PDF will be available',
+        'Invoice PDFs in Paraşüt are generated when the invoice is issued as an e-archive or e-invoice',
+        'Official PDFs become downloadable once GİB/Paraşüt processing is complete',
       ],
     });
   } catch (error) {
