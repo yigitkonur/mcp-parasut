@@ -16,9 +16,19 @@ export interface ParasutConfig {
   baseUrl?: string;
 }
 
+export interface HttpServerConfig {
+  port: number;
+  host: string;
+  apiKey?: string | undefined;
+  corsOrigin?: string | undefined;
+  publicUrl?: string | undefined;
+  oauthEnabled?: boolean | undefined;
+}
+
 export interface ServerConfig {
   parasut: ParasutConfig;
   debug: boolean;
+  http?: HttpServerConfig;
 }
 
 function getEnv(name: string, required: true): string;
@@ -80,6 +90,11 @@ export function loadConfig(): ServerConfig {
     );
   }
 
+  const port = getEnvInt('PORT') ?? getEnvInt('MCP_PORT') ?? 3000;
+  const host = getEnv('HOST') ?? getEnv('MCP_HOST') ?? '0.0.0.0';
+  const apiKey = getEnv('MCP_API_KEY') ?? getEnv('MCP_HTTP_TOKEN');
+  const corsOrigin = getEnv('MCP_CORS_ORIGIN') ?? '*';
+
   return {
     parasut: {
       ...(companyId !== undefined && { companyId }),
@@ -92,6 +107,14 @@ export function loadConfig(): ServerConfig {
       ...(baseUrl !== undefined && { baseUrl }),
     },
     debug: getEnv('DEBUG') === 'true',
+    http: {
+      port,
+      host,
+      ...(apiKey && { apiKey }),
+      corsOrigin,
+      publicUrl: getEnv('MCP_PUBLIC_URL') || getEnv('MCP_URL'),
+      oauthEnabled: getEnv('MCP_OAUTH_ENABLED') !== 'false',
+    },
   };
 }
 

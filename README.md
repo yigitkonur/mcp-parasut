@@ -132,14 +132,155 @@ Cursor ayarlarında (`Features > MCP Servers`) veya `.cursor/mcp.json` dosyasın
 
 ### `mcpc` CLI ile Canlı Test ve Kullanım
 ```bash
-# Sunucu bağlantısını test etme ve araçları listeleme
-mcpc npx -y @yigitkonur/parasut-mcp-server tools-list
+# Sunucu bağlantısını test etme ve araçları listeleme (stdio modu)
+mcpc connect "npx -y @yigitkonur/parasut-mcp-server" @parasut-local
+mcpc @parasut-local tools-list
 
 # Canlı araç çağrısı örneği
-mcpc npx -y @yigitkonur/parasut-mcp-server tools-call get_financial_summary
+mcpc @parasut-local tools-call get_financial_summary
+```
+
+### 🌐 URL Tabanlı Dağıtım & Streamable HTTP Modu (Docker / Dokploy / Remote MCP)
+
+Sunucu, standart `stdio` taşıma katmanının yanı sıra resmî MCP spesifikasyonuna tam uyumlu **Streamable HTTP** taşıma protokolünü (`2024-11-05`, `2025-11-25`, `2026-07-28`) destekler. Bu mod sayesinde MCP sunucusunu Docker, Dokploy, Kubernetes veya VPS üzerinde bağımsız bir web servisi olarak barındırabilir ve yapay zeka ajanlarınıza güvenli bir HTTP uç noktası sunabilirsiniz.
+
+#### HTTP Taşıma Katmanını Başlatma
+
+Aşağıdaki komutlardan veya ortam değişkenlerinden biriyle HTTP modu otomatik olarak devreye girer:
+
+```bash
+# 1. Ortam değişkeni ile başlatma
+MCP_TRANSPORT=http PORT=3000 node packages/parasut-mcp-server/dist/server.js
+
+# 2. CLI parametresi ile başlatma
+parasut-mcp --http --port 3000
+
+# 3. Bağımsız binary ile başlatma
+parasut-mcp-http --port 3000
+```
+
+#### HTTP Uç Noktaları (Endpoints)
+
+- `POST /mcp` — MCP protokol başlatma (initialize), araç listeleme ve JSON-RPC mesaj alışverişi.
+- `GET /mcp` — Server-Sent Events (SSE) stream akışı ve bağlantı sürdürülebilirliği (resumability).
+- `DELETE /mcp` — Oturum sonlandırma (`mcp-session-id` başlığı ile).
+- `GET /health` — Liveness & readiness sağlık kontrolü (aktif oturum sayısı ve versiyon bilgisi döner).
+- `GET /` — Sunucu kök meta verisi ve yetkilendirme durumu.
+
+#### İsteğe Bağlı API Anahtarı Koruması (Bearer Auth)
+
+HTTP sunucusunu dış dünyadan korumak için `MCP_API_KEY` tanımlayabilirsiniz. Tanımlandığında, `/mcp` uç noktasına yapılan tüm isteklere `Authorization: Bearer <MCP_API_KEY>` başlığı zorunlu hale gelir.
+
+```bash
+MCP_TRANSPORT=http
+PORT=3000
+MCP_API_KEY=gizli-guclu-api-anahtari
+```
+
+#### 🛡️ Resmî OAuth 2.0 / 2.1 Yetkilendirme (RFC 9728, RFC 8414, RFC 7591)
+
+Paraşüt MCP Sunucusu, IETF ve Model Context Protocol yetkilendirme spesifikasyonlarını eksiksiz uygular:
+
+- **RFC 9728 Protected Resource Metadata**: `GET /.well-known/oauth-protected-resource` uç noktası üzerinden sunucunun kaynak URI'si, yetkilendirme sunucuları ve desteklenen kapsamları (`scopes_supported`) yayınlanır.
+- **RFC 8414 Authorization Server Metadata**: `GET /.well-known/oauth-authorization-server` üzerinden uç noktalar, desteklenen grant türleri (`authorization_code`, `client_credentials`, `refresh_token`), PKCE yöntemleri (`S256`) ve kimlik doğrulama biçimleri ilan edilir.
+- **RFC 7591 Dynamic Client Registration (DCR)**: `POST /oauth/register` ile istemciler (mcpc, Claude Desktop, Cursor vb.) dinamik olarak istemci kaydı oluşturabilir.
+- **RFC 7636 PKCE ile Yetkilendirme Kodu Akışı**: `GET /oauth/authorize` ve `POST /oauth/token` ile interaktif tarayıcı onay ekranı veya otomatik onay.
+- **M2M / CI/CD için Client Credentials**: `POST /oauth/token` (`grant_type=client_credentials`) ile CLI ve otomasyon ajanları doğrudan access token temin edebilir.
+- **RFC 6750 WWW-Authenticate Başlığı**: Yetkisiz (401) isteklerde istemciye `WWW-Authenticate: Bearer error="invalid_token", resource_metadata="..."` başlığı dönülerek istemcinin dinamik yetkilendirme akışını otomatik başlatması sağlanır.
+- **RFC 7009 Token Revocation**: `POST /oauth/revoke` ile token iptali.
+
+##### `mcpc` CLI ile OAuth Üzerinden Bağlanma
+```bash
+# 1. OAuth Client Credentials ile giriş yapma ve profil kaydetme
+mcpc login https://parasut-mcp.example.com/mcp \
+  --grant client-credentials \
+  --client-id mcpc-default \
+  --client-secret your-mcp-api-key \
+  --profile parasut-oauth
+
+# 2. Kaydedilen OAuth profiliyle güvenli bağlantı kurma
+mcpc connect https://parasut-mcp.example.com/mcp @parasut-oauth --profile parasut-oauth
+
+# 3. Oturum üzerinden canlı araç çalıştırma
+mcpc @parasut-oauth tools-call get_financial_summary
+mcpc @parasut-oauth tools-call list_accounts
+```
+
+
+#### Docker ve Dokploy ile Dağıtım
+
+Monorepo kökünde bulunan `Dockerfile` çok aşamalı (multi-stage) ve optimize edilmiş `node:22-alpine` imajı üretir:
+
+```bash
+# Docker imajı derleme
+docker build -t parasut-mcp:latest .
+
+# Docker container çalıştırma
+docker run -d \
+  --name parasut-mcp \
+  -p 3000:3000 \
+  -e NODE_ENV=production \
+  -e MCP_TRANSPORT=http \
+  -e PORT=3000 \
+  -e PARASUT_CLIENT_ID="your-client-id" \
+  -e PARASUT_CLIENT_SECRET="your-client-secret" \
+  -e PARASUT_ACCESS_TOKEN="your-access-token" \
+  -e PARASUT_REFRESH_TOKEN="your-refresh-token" \
+  parasut-mcp:latest
+```
+
+**Dokploy Compose Örneği:**
+
+```yaml
+services:
+  parasut-mcp:
+    image: parasut-mcp:latest
+    pull_policy: never
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 15s
+    environment:
+      NODE_ENV: production
+      MCP_TRANSPORT: http
+      HOST: 0.0.0.0
+      PORT: "3000"
+      PARASUT_CLIENT_ID: ${PARASUT_CLIENT_ID}
+      PARASUT_CLIENT_SECRET: ${PARASUT_CLIENT_SECRET}
+      PARASUT_ACCESS_TOKEN: ${PARASUT_ACCESS_TOKEN}
+      PARASUT_REFRESH_TOKEN: ${PARASUT_REFRESH_TOKEN}
+      MCP_API_KEY: ${MCP_API_KEY:-}
+    networks:
+      default: {}
+      dokploy-network: {}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+networks:
+  dokploy-network:
+    external: true
+```
+
+#### Uzaktan `mcpc` Bağlantısı
+
+Canlı HTTP uç noktanıza doğrudan `mcpc` veya MCP istemcileri üzerinden bağlanabilirsiniz:
+
+```bash
+# Canlı Streamable HTTP uç noktasına bağlanma
+mcpc connect https://parasut-mcp.example.com/mcp @parasut-remote
+
+# Oturum durumunu kontrol etme ve ping atma
+mcpc @parasut-remote ping
+
+# Uzak sunucudaki araçları listeleme
+mcpc @parasut-remote tools-list
 ```
 
 ---
+
 
 ## 🧰 MCP Araçları Kataloğu (34 Araç - Detaylı Türkçe Rehber)
 

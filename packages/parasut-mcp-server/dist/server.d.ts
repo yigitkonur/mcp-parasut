@@ -10,8 +10,9 @@ import { type ServerConfig } from './config.js';
  * Creates and configures the MCP server.
  */
 export declare function createServer(config: ServerConfig): Server;
+export { startHttpServer, createHttpServer, type HttpServerOptions } from './http.js';
 /**
- * Starts the MCP server with stdio transport.
+ * Starts the MCP server (stdio or HTTP depending on environment).
  */
 export declare function startServer(): Promise<void>;
 //# sourceMappingURL=server.d.ts.map

@@ -53,6 +53,10 @@ export function loadConfig() {
     if (!hasToken && !hasPasswordCredentials) {
         throw new Error('At least one authentication method must be provided: (PARASUT_ACCESS_TOKEN / PARASUT_REFRESH_TOKEN) or (PARASUT_USERNAME and PARASUT_PASSWORD)');
     }
+    const port = getEnvInt('PORT') ?? getEnvInt('MCP_PORT') ?? 3000;
+    const host = getEnv('HOST') ?? getEnv('MCP_HOST') ?? '0.0.0.0';
+    const apiKey = getEnv('MCP_API_KEY') ?? getEnv('MCP_HTTP_TOKEN');
+    const corsOrigin = getEnv('MCP_CORS_ORIGIN') ?? '*';
     return {
         parasut: {
             ...(companyId !== undefined && { companyId }),
@@ -65,6 +69,14 @@ export function loadConfig() {
             ...(baseUrl !== undefined && { baseUrl }),
         },
         debug: getEnv('DEBUG') === 'true',
+        http: {
+            port,
+            host,
+            ...(apiKey && { apiKey }),
+            corsOrigin,
+            publicUrl: getEnv('MCP_PUBLIC_URL') || getEnv('MCP_URL'),
+            oauthEnabled: getEnv('MCP_OAUTH_ENABLED') !== 'false',
+        },
     };
 }
 /**

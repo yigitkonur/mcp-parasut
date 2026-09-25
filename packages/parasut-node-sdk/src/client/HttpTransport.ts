@@ -59,6 +59,12 @@ let proxyAttempted = false;
 export async function getOrInitProxyDispatcher(): Promise<unknown> {
   if (proxyAttempted) return cachedProxyDispatcher;
   proxyAttempted = true;
+
+  // If Node is already handling proxy via --use-env-proxy, let native fetch handle it
+  if (typeof process !== 'undefined' && process.env?.['NODE_OPTIONS']?.includes('--use-env-proxy')) {
+    return undefined;
+  }
+
   const proxyUrl = getProxyUrl();
   if (!proxyUrl) return undefined;
 

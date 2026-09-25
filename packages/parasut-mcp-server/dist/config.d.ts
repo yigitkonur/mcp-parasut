@@ -14,9 +14,18 @@ export interface ParasutConfig {
     refreshToken?: string;
     baseUrl?: string;
 }
+export interface HttpServerConfig {
+    port: number;
+    host: string;
+    apiKey?: string | undefined;
+    corsOrigin?: string | undefined;
+    publicUrl?: string | undefined;
+    oauthEnabled?: boolean | undefined;
+}
 export interface ServerConfig {
     parasut: ParasutConfig;
     debug: boolean;
+    http?: HttpServerConfig;
 }
 /**
  * Loads configuration from environment variables.
