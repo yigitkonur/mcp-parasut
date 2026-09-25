@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { initializeClient, resetClient } from '../src/client.js';
 import { handleCreateInvoice, handleSearchInvoices } from '../src/tools/invoices.js';
 import { handleCreateBill } from '../src/tools/bills.js';
-import { handleGetFinancialSummary } from '../src/tools/financial.js';
+import { handleGetFinancialSummary, handleSearchTransactions } from '../src/tools/financial.js';
 
 describe('Tool Bugfixes Verification', () => {
   let createdSalesInvoicePayload: any = null;
   let searchedSalesInvoiceParams: any = null;
   let createdPurchaseBillPayload: any = null;
   let financialSalesInvoiceParams: any = null;
+  let listTransactionsParams: any = null;
 
   beforeEach(() => {
     resetClient();
@@ -17,6 +18,7 @@ describe('Tool Bugfixes Verification', () => {
     searchedSalesInvoiceParams = null;
     createdPurchaseBillPayload = null;
     financialSalesInvoiceParams = null;
+    listTransactionsParams = null;
 
     // Initialize client with mock methods
     const client = initializeClient({
@@ -101,9 +103,32 @@ describe('Tool Bugfixes Verification', () => {
       return {
         data: [
           {
-            attributes: { currency: 'TRL', balance: 500 },
+            id: 'acc-1',
+            attributes: { name: 'Main Bank Account', currency: 'TRL', balance: '500.00' },
           },
         ],
+      };
+    }) as any;
+
+    // Mock accounts.listTransactions
+    client.accounts.listTransactions = (async (accId: any, params: any) => {
+      listTransactionsParams = { accId, params };
+      return {
+        data: [
+          {
+            id: 'tx-1',
+            type: 'transactions',
+            attributes: {
+              date: '2025-01-01',
+              transaction_type: 'initial_account_balance',
+              debit_amount: '100.50',
+              debit_currency: 'TRL',
+              description: 'Initial deposit',
+              is_reconciled: true,
+            },
+          },
+        ],
+        meta: { total_count: 1, current_page: 1, total_pages: 1 },
       };
     }) as any;
   });
@@ -201,5 +226,37 @@ describe('Tool Bugfixes Verification', () => {
     assert.ok(financialSalesInvoiceParams);
     assert.equal(financialSalesInvoiceParams.filter.payment_status, 'not_due');
     assert.equal(financialSalesInvoiceParams.filter.invoice_status, undefined);
+
+    // Verify balances parsed cleanly as numbers, not NaN
+    assert.match(res.content[0].text, /"TRL":\s*500/);
+    assert.match(res.content[0].text, /"total":\s*100/);
+    assert.match(res.content[0].text, /"total":\s*50/);
+  });
+
+  it('handleSearchTransactions resolves default account when omitted', async () => {
+    const res = await handleSearchTransactions({});
+
+    assert.equal(res.isError, undefined);
+    assert.ok(listTransactionsParams);
+    assert.equal(listTransactionsParams.accId, 'acc-1');
+    assert.equal(listTransactionsParams.params.page.size, 25);
+
+    assert.match(res.content[0].text, /"id":\s*"tx-1"/);
+    assert.match(res.content[0].text, /"debit_amount":\s*100\.5/);
+  });
+
+  it('handleSearchTransactions uses specified account_id and filters', async () => {
+    const res = await handleSearchTransactions({
+      account_id: 'acc-999',
+      date_start: '2025-01-01',
+      limit: 10,
+    });
+
+    assert.equal(res.isError, undefined);
+    assert.ok(listTransactionsParams);
+    assert.equal(listTransactionsParams.accId, 'acc-999');
+    assert.equal(listTransactionsParams.params.filter.date, '2025-01-01');
+    assert.equal(listTransactionsParams.params.page.size, 10);
   });
 });
+

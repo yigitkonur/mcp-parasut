@@ -13,14 +13,14 @@ import { handleError } from '../utils/errors.js';
 const GetStockLevelsSchema = z.object({
     product_id: z.string().optional().describe('Filter by product ID'),
     page: z.number().int().min(1).default(1),
-    limit: z.number().int().min(1).max(100).default(100),
+    limit: z.number().int().min(1).max(25).default(25),
 });
 const SearchStockMovementsSchema = z.object({
     product_id: z.string().optional().describe('Filter by product ID'),
     date_start: z.string().optional().describe('Start date'),
     date_end: z.string().optional().describe('End date'),
     page: z.number().int().min(1).default(1),
-    limit: z.number().int().min(1).max(100).default(100),
+    limit: z.number().int().min(1).max(25).default(25),
 });
 // ============================================================================
 // Tool Definitions
@@ -49,7 +49,7 @@ Stock levels with: id, stock_count per warehouse.
             properties: {
                 product_id: { type: 'string', description: 'Filter by product ID' },
                 page: { type: 'number', default: 1 },
-                limit: { type: 'number', default: 100 },
+                limit: { type: 'number', default: 25 },
             },
         },
     },
@@ -78,7 +78,7 @@ List of stock movements showing quantity changes and timestamps.
                 date_start: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
                 date_end: { type: 'string', description: 'End date (YYYY-MM-DD)' },
                 page: { type: 'number', default: 1 },
-                limit: { type: 'number', default: 100 },
+                limit: { type: 'number', default: 25 },
             },
         },
     },
@@ -90,26 +90,56 @@ export async function handleGetStockLevels(args) {
     try {
         const params = GetStockLevelsSchema.parse(args);
         const client = getClient();
-        const filter = {};
-        if (params.product_id)
-            filter['product_id'] = params.product_id;
-        const response = await client.inventoryLevels.list({
-            filter,
+        if (params.product_id) {
+            const response = await client.inventoryLevels.getForProduct(params.product_id, {
+                page: { number: params.page, size: params.limit },
+            });
+            const warehouseMap = new Map();
+            if (Array.isArray(response.included)) {
+                for (const item of response.included) {
+                    if (item.type === 'warehouses' && item.attributes?.name) {
+                        warehouseMap.set(item.id, item.attributes.name);
+                    }
+                }
+            }
+            const levels = (response.data ?? []).map((level) => {
+                const warehouseId = level.relationships?.warehouse?.data?.id;
+                const warehouseName = warehouseId ? warehouseMap.get(warehouseId) : undefined;
+                return {
+                    id: level.id,
+                    warehouse_id: warehouseId,
+                    warehouse_name: warehouseName,
+                    stock_count: level.attributes?.stock_count,
+                    total_inventory: level.attributes?.total_inventory,
+                };
+            });
+            return formatList(levels, {
+                totalCount: response.meta?.total_count ?? levels.length,
+                currentPage: response.meta?.current_page ?? params.page,
+                totalPages: response.meta?.total_pages ?? 1,
+            }, {
+                nextSteps: [
+                    { action: 'View movement history', example: `search_stock_movements(product_id="${params.product_id}")` },
+                ],
+            });
+        }
+        // When product_id is not specified, list products with their stock info
+        const productsResponse = await client.products.list({
             page: { number: params.page, size: params.limit },
-            include: ['product', 'warehouse'],
         });
-        const levels = response.data.map((level) => ({
-            id: level.id,
-            stock_count: level.attributes.stock_count,
-            // Relationships would be in included
+        const products = productsResponse.data.map((p) => ({
+            id: p.id,
+            name: p.attributes.name,
+            code: p.attributes.code,
+            stock_count: p.attributes.stock_count ?? p.attributes.initial_stock_count ?? '0.0',
         }));
-        return formatList(levels, {
-            totalCount: response.meta.total_count,
-            currentPage: response.meta.current_page,
-            totalPages: response.meta.total_pages,
+        return formatList(products, {
+            totalCount: productsResponse.meta.total_count,
+            currentPage: productsResponse.meta.current_page,
+            totalPages: productsResponse.meta.total_pages,
         }, {
             nextSteps: [
-                { action: 'View movement history', example: 'search_stock_movements(product_id="<id>")' },
+                { action: 'Get detailed stock levels for product', example: 'get_stock_levels(product_id="<id>")' },
             ],
         });
     }

@@ -25,7 +25,7 @@ const SearchBillsSchema = z.object({
   issue_date_start: z.string().optional().describe('Start date (YYYY-MM-DD)'),
   issue_date_end: z.string().optional().describe('End date (YYYY-MM-DD)'),
   page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(100).default(100),
+  limit: z.number().int().min(1).max(25).default(25),
 });
 
 const GetBillSchema = z.object({
@@ -90,7 +90,7 @@ Use the ID to call get_bill for full details.
         issue_date_start: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
         issue_date_end: { type: 'string', description: 'End date (YYYY-MM-DD)' },
         page: { type: 'number', default: 1 },
-        limit: { type: 'number', default: 100 },
+        limit: { type: 'number', default: 25 },
       },
     },
   },

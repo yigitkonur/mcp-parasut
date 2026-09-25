@@ -26,7 +26,7 @@ const SearchInvoicesSchema = z.object({
         .optional()
         .describe('Filter by status (mapped to payment_status or item_type)'),
     page: z.number().int().min(1).default(1).describe('Page number'),
-    limit: z.number().int().min(1).max(100).default(100).describe('Results per page (default: 100)'),
+    limit: z.number().int().min(1).max(25).default(25).describe('Results per page (default: 25)'),
 });
 const GetInvoiceSchema = z.object({
     id: z.string().describe('Invoice ID'),
@@ -146,7 +146,7 @@ Use the ID to call get_invoice for full details.
                 },
                 limit: {
                     type: 'number',
-                    default: 100,
+                    default: 25,
                 },
             },
         },

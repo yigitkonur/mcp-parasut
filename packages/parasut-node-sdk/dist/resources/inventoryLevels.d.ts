@@ -19,7 +19,16 @@ export interface InventoryLevelFilters {
 }
 export declare class InventoryLevelsResource extends BaseResource<InventoryLevel, InventoryLevelAttributes, InventoryLevelFilters> {
     constructor(config: Omit<ResourceConfig, 'basePath' | 'resourceType'>);
-    getForProduct(productId: number): Promise<import("./BaseResource.js").PaginatedResponse<InventoryLevel>>;
+    getForProduct(productId: number | string, options?: {
+        page?: {
+            number?: number;
+            size?: number;
+        };
+    }): Promise<{
+        data: InventoryLevel[];
+        included?: any[];
+        meta?: any;
+    }>;
     getForWarehouse(warehouseId: number): Promise<import("./BaseResource.js").PaginatedResponse<InventoryLevel>>;
 }
 //# sourceMappingURL=inventoryLevels.d.ts.map

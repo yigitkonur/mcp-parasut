@@ -22,5 +22,21 @@ export interface TransactionFilters {
 }
 export declare class TransactionsResource extends BaseResource<Transaction, TransactionAttributes, TransactionFilters> {
     constructor(config: Omit<ResourceConfig, 'basePath' | 'resourceType'>);
+    /**
+     * Lists transactions for a specific account.
+     * Note: Paraşüt API does not support global /transactions listing; transactions are scoped to accounts.
+     */
+    listForAccount(accountId: string | number, options?: {
+        filter?: TransactionFilters;
+        page?: {
+            number?: number;
+            size?: number;
+        };
+        sort?: string;
+    }): Promise<{
+        data: Transaction[];
+        meta?: any;
+        links?: any;
+    }>;
 }
 //# sourceMappingURL=transactions.d.ts.map

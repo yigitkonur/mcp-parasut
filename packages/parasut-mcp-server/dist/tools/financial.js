@@ -12,14 +12,14 @@ import { handleError } from '../utils/errors.js';
 // ============================================================================
 const ListAccountsSchema = z.object({
     page: z.number().int().min(1).default(1),
-    limit: z.number().int().min(1).max(100).default(100),
+    limit: z.number().int().min(1).max(25).default(25),
 });
 const SearchTransactionsSchema = z.object({
-    account_id: z.string().optional().describe('Filter by account'),
+    account_id: z.string().optional().describe('Filter by account ID. If omitted, the first account is used.'),
     date_start: z.string().optional().describe('Start date (YYYY-MM-DD)'),
     date_end: z.string().optional().describe('End date (YYYY-MM-DD)'),
     page: z.number().int().min(1).default(1),
-    limit: z.number().int().min(1).max(100).default(100),
+    limit: z.number().int().min(1).max(25).default(25),
 });
 const CreateBankFeeSchema = z.object({
     account_id: z.string().describe('Bank account ID'),
@@ -54,7 +54,7 @@ Use the ID for record_invoice_payment or record_bill_payment.
             type: 'object',
             properties: {
                 page: { type: 'number', default: 1 },
-                limit: { type: 'number', default: 100 },
+                limit: { type: 'number', default: 25 },
             },
         },
     },
@@ -79,11 +79,11 @@ List of transactions with payment/transfer details.
         inputSchema: {
             type: 'object',
             properties: {
-                account_id: { type: 'string', description: 'Filter by account ID' },
+                account_id: { type: 'string', description: 'Filter by account ID. If omitted, the first active account is used.' },
                 date_start: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
                 date_end: { type: 'string', description: 'End date (YYYY-MM-DD)' },
                 page: { type: 'number', default: 1 },
-                limit: { type: 'number', default: 100 },
+                limit: { type: 'number', default: 25 },
             },
         },
     },
@@ -189,19 +189,45 @@ export async function handleSearchTransactions(args) {
     try {
         const params = SearchTransactionsSchema.parse(args);
         const client = getClient();
+        let accountId = params.account_id;
+        let accountName;
+        if (!accountId) {
+            const accounts = await client.accounts.list({ page: { number: 1, size: 25 } });
+            if (!accounts.data.length) {
+                return formatSuccess([], {
+                    summary: 'No accounts found to search transactions for.',
+                });
+            }
+            accountId = accounts.data[0].id;
+            accountName = accounts.data[0].attributes.name;
+        }
         const filter = {};
-        if (params.account_id)
-            filter['account_id'] = params.account_id;
         if (params.date_start)
             filter['date'] = params.date_start;
-        const response = await client.transactions.list({
+        const response = await client.accounts.listTransactions(accountId, {
             filter,
             page: { number: params.page, size: params.limit },
         });
-        return formatList(response.data, {
-            totalCount: response.meta.total_count,
-            currentPage: response.meta.current_page,
-            totalPages: response.meta.total_pages,
+        const transactions = (response.data ?? []).map((t) => ({
+            id: t.id,
+            date: t.attributes?.date,
+            transaction_type: t.attributes?.transaction_type,
+            debit_amount: t.attributes?.debit_amount ? Number(t.attributes.debit_amount) : undefined,
+            debit_currency: t.attributes?.debit_currency,
+            credit_amount: t.attributes?.credit_amount ? Number(t.attributes.credit_amount) : undefined,
+            credit_currency: t.attributes?.credit_currency,
+            description: t.attributes?.description || t.attributes?.auto_description,
+            is_reconciled: t.attributes?.is_reconciled,
+        }));
+        return formatList(transactions, {
+            totalCount: response.meta?.total_count ?? transactions.length,
+            currentPage: response.meta?.current_page ?? params.page,
+            totalPages: response.meta?.total_pages ?? 1,
+        }, {
+            ...(accountName ? { summary: `Showing transactions for account "${accountName}" (ID: ${accountId})` } : {}),
+            nextSteps: [
+                { action: 'Search another account', example: 'search_transactions(account_id="<id>")' },
+            ],
         });
     }
     catch (error) {
@@ -216,7 +242,7 @@ export async function handleCreateBankFee(args) {
         // If not confirmed, return preview
         if (!params.confirm) {
             // Try to get account info for preview
-            const accounts = await client.accounts.list({ page: { number: 1, size: 100 } });
+            const accounts = await client.accounts.list({ page: { number: 1, size: 25 } });
             const account = accounts.data.find(a => a.id === params.account_id);
             return formatSuccess({
                 preview: true,
@@ -266,31 +292,31 @@ export async function handleGetFinancialSummary(_args) {
         const client = getClient();
         // Fetch accounts for balances
         const accountsResponse = await client.accounts.list({
-            page: { number: 1, size: 100 },
+            page: { number: 1, size: 25 },
         });
         // Calculate totals by currency
         const balances = {};
         for (const account of accountsResponse.data) {
             const currency = account.attributes.currency ?? 'TRL';
-            const balance = account.attributes.balance ?? 0;
+            const balance = Number(account.attributes.balance ?? 0) || 0;
             balances[currency] = (balances[currency] ?? 0) + balance;
         }
         // Fetch open invoices for receivables
         const receivablesResponse = await client.salesInvoices.list({
             filter: { payment_status: 'not_due' },
-            page: { number: 1, size: 100 },
+            page: { number: 1, size: 25 },
         });
         let totalReceivables = 0;
         for (const invoice of receivablesResponse.data) {
-            totalReceivables += invoice.attributes.remaining ?? 0;
+            totalReceivables += Number(invoice.attributes.remaining ?? 0) || 0;
         }
         // Fetch open bills for payables
         const payablesResponse = await client.purchaseBills.list({
-            page: { number: 1, size: 100 },
+            page: { number: 1, size: 25 },
         });
         let totalPayables = 0;
         for (const bill of payablesResponse.data) {
-            totalPayables += bill.attributes.remaining ?? 0;
+            totalPayables += Number(bill.attributes.remaining ?? 0) || 0;
         }
         return formatSuccess({
             accounts_receivable: {

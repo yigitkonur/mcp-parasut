@@ -23,12 +23,12 @@ const ListCategoriesSchema = z.object({
 
 const ListTagsSchema = z.object({
   page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(100).default(100),
+  limit: z.number().int().min(1).max(25).default(25),
 });
 
 const ListEmployeesSchema = z.object({
   page: z.number().int().min(1).default(1),
-  limit: z.number().int().min(1).max(100).default(100),
+  limit: z.number().int().min(1).max(25).default(25),
 });
 
 const CreateSalarySchema = z.object({
@@ -105,7 +105,7 @@ List of tags with: id, name.
       type: 'object',
       properties: {
         page: { type: 'number', default: 1 },
-        limit: { type: 'number', default: 100 },
+        limit: { type: 'number', default: 25 },
       },
     },
   },
@@ -131,7 +131,7 @@ Use the ID for create_salary.
       type: 'object',
       properties: {
         page: { type: 'number', default: 1 },
-        limit: { type: 'number', default: 100 },
+        limit: { type: 'number', default: 25 },
       },
     },
   },
@@ -227,7 +227,7 @@ export async function handleListCategories(args: unknown): Promise<ToolResponse>
 
     const response = await client.itemCategories.list({
       filter,
-      page: { number: 1, size: 100 },
+      page: { number: 1, size: 25 },
     });
 
     const categories = response.data.map((cat) => ({
@@ -309,7 +309,7 @@ export async function handleCreateSalary(args: unknown): Promise<ToolResponse> {
     // If not confirmed, return preview
     if (!params.confirm) {
       // Try to get employee info for preview
-      const employees = await client.employees.list({ page: { number: 1, size: 100 } });
+      const employees = await client.employees.list({ page: { number: 1, size: 25 } });
       const employee = employees.data.find(e => e.id === params.employee_id);
 
       return formatSuccess({
