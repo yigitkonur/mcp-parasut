@@ -277,7 +277,7 @@ export async function handleGetFinancialSummary(_args) {
         }
         // Fetch open invoices for receivables
         const receivablesResponse = await client.salesInvoices.list({
-            filter: { invoice_status: 'open' },
+            filter: { payment_status: 'not_due' },
             page: { number: 1, size: 100 },
         });
         let totalReceivables = 0;

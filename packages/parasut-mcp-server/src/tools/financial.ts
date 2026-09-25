@@ -299,7 +299,7 @@ export async function handleGetFinancialSummary(_args: unknown): Promise<ToolRes
 
     // Fetch open invoices for receivables
     const receivablesResponse = await client.salesInvoices.list({
-      filter: { invoice_status: 'open' } as Record<string, string>,
+      filter: { payment_status: 'not_due' as any },
       page: { number: 1, size: 100 },
     });
 

@@ -17,10 +17,14 @@ const SearchInvoicesSchema = z.object({
         .optional()
         .describe('Start date (YYYY-MM-DD)'),
     issue_date_end: z.string().optional().describe('End date (YYYY-MM-DD)'),
-    status: z
-        .enum(['draft', 'open', 'paid', 'cancelled'])
+    payment_status: z
+        .enum(['overdue', 'not_due', 'unscheduled', 'paid'])
         .optional()
-        .describe('Filter by status'),
+        .describe('Filter by payment status (overdue, not_due, unscheduled, paid)'),
+    status: z
+        .enum(['draft', 'open', 'paid', 'cancelled', 'overdue', 'not_due', 'unscheduled', 'unpaid'])
+        .optional()
+        .describe('Filter by status (mapped to payment_status or item_type)'),
     page: z.number().int().min(1).default(1).describe('Page number'),
     limit: z.number().int().min(1).max(100).default(100).describe('Results per page (default: 100)'),
 });
@@ -126,10 +130,15 @@ Use the ID to call get_invoice for full details.
                     type: 'string',
                     description: 'End date (YYYY-MM-DD)',
                 },
+                payment_status: {
+                    type: 'string',
+                    enum: ['overdue', 'not_due', 'unscheduled', 'paid'],
+                    description: 'Filter by payment status: overdue, not_due, unscheduled, paid',
+                },
                 status: {
                     type: 'string',
-                    enum: ['draft', 'open', 'paid', 'cancelled'],
-                    description: 'Filter by status. MUST be one of: draft, open, paid, cancelled',
+                    enum: ['overdue', 'not_due', 'unscheduled', 'paid', 'open', 'unpaid', 'draft', 'cancelled'],
+                    description: 'Filter by status (mapped to payment_status or item_type)',
                 },
                 page: {
                     type: 'number',
@@ -459,8 +468,32 @@ export async function handleSearchInvoices(args) {
             filter['contact_id'] = params.contact_id;
         if (params.issue_date_start)
             filter['issue_date'] = params.issue_date_start;
-        if (params.status)
-            filter['invoice_status'] = params.status;
+        if (params.payment_status) {
+            filter['payment_status'] = params.payment_status;
+        }
+        else if (params.status) {
+            const statusMap = {
+                paid: 'paid',
+                overdue: 'overdue',
+                not_due: 'not_due',
+                unscheduled: 'unscheduled',
+                open: 'not_due',
+                unpaid: 'not_due',
+            };
+            const mapped = statusMap[params.status];
+            if (params.status === 'draft') {
+                filter['item_type'] = 'estimate';
+            }
+            else if (params.status === 'cancelled') {
+                filter['item_type'] = 'cancelled';
+            }
+            else if (mapped) {
+                filter['payment_status'] = mapped;
+            }
+            else {
+                filter['payment_status'] = params.status;
+            }
+        }
         const response = await client.salesInvoices.list({
             filter,
             page: { number: params.page, size: params.limit },
@@ -604,17 +637,19 @@ export async function handleCreateInvoice(args) {
                 quantity: line.quantity,
                 unit_price: line.unit_price,
                 vat_rate: line.vat_rate,
-                discount_type: line.discount_type,
-                discount_value: line.discount_value,
-                description: line.description,
+                ...(line.discount_type !== undefined && { discount_type: line.discount_type }),
+                ...(line.discount_value !== undefined && { discount_value: line.discount_value }),
+                ...(line.description !== undefined && { description: line.description }),
             },
-            relationships: line.product_id
+            ...(line.product_id
                 ? {
-                    product: {
-                        data: { id: line.product_id, type: 'products' },
+                    relationships: {
+                        product: {
+                            data: { id: line.product_id, type: 'products' },
+                        },
                     },
                 }
-                : undefined,
+                : {}),
         }));
         const response = await client.salesInvoices.create({
             data: {
@@ -633,10 +668,7 @@ export async function handleCreateInvoice(args) {
                         data: { id: params.contact_id, type: 'contacts' },
                     },
                     details: {
-                        data: details.map((_, i) => ({
-                            id: `temp-${i}`,
-                            type: 'sales_invoice_details',
-                        })),
+                        data: details,
                     },
                 },
             },

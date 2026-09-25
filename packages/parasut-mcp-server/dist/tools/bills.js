@@ -26,6 +26,7 @@ const BillLineSchema = z.object({
     unit_price: z.number().describe('Unit price'),
     vat_rate: z.number().min(0).max(100).default(20),
     category_id: z.string().optional().describe('Expense category ID'),
+    product_id: z.string().optional().describe('Product ID (optional)'),
 });
 const CreateBillSchema = z.object({
     supplier_id: z.string().describe('Supplier contact ID'),
@@ -150,6 +151,7 @@ Use the ID for record_bill_payment.
                             unit_price: { type: 'number' },
                             vat_rate: { type: 'number' },
                             category_id: { type: 'string' },
+                            product_id: { type: 'string' },
                         },
                         required: ['description', 'unit_price'],
                     },
@@ -303,6 +305,24 @@ export async function handleCreateBill(args) {
                 ],
             });
         }
+        const details = params.lines.map((line) => ({
+            type: 'purchase_bill_details',
+            attributes: {
+                description: line.description,
+                quantity: line.quantity ?? 1,
+                unit_price: line.unit_price,
+                vat_rate: line.vat_rate ?? 20,
+            },
+            ...(line.product_id
+                ? {
+                    relationships: {
+                        product: {
+                            data: { id: line.product_id, type: 'products' },
+                        },
+                    },
+                }
+                : {}),
+        }));
         const response = await client.purchaseBills.create({
             data: {
                 type: 'purchase_bills',
@@ -315,6 +335,9 @@ export async function handleCreateBill(args) {
                 },
                 relationships: {
                     supplier: { data: { id: params.supplier_id, type: 'contacts' } },
+                    details: {
+                        data: details,
+                    },
                 },
             },
         });

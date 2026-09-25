@@ -5,7 +5,11 @@
  * Initialized once at server startup and reused for all tool calls.
  */
 
-import { ParasutClient } from '@yigitkonur/parasut-node-sdk';
+import {
+  ParasutClient,
+  type ParasutClientConfig,
+  MemoryTokenStorage,
+} from '@yigitkonur/parasut-node-sdk';
 import type { ParasutConfig } from './config.js';
 
 let client: ParasutClient | null = null;
@@ -19,16 +23,54 @@ export function initializeClient(config: ParasutConfig): ParasutClient {
     return client;
   }
 
-  client = new ParasutClient({
-    companyId: config.companyId,
-    credentials: {
+  const clientOptions: ParasutClientConfig & {
+    refreshToken?: string;
+    clientId?: string;
+    clientSecret?: string;
+  } = {
+    companyId: config.companyId ?? 0,
+    ...(config.baseUrl !== undefined && { baseUrl: config.baseUrl }),
+  };
+
+  if (config.clientId && config.clientSecret && config.username && config.password) {
+    clientOptions.credentials = {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
       username: config.username,
       password: config.password,
-    },
-    ...(config.baseUrl !== undefined && { baseUrl: config.baseUrl }),
-  });
+    };
+  }
+
+  if (config.accessToken) {
+    clientOptions.accessToken = config.accessToken;
+  } else if (config.refreshToken && !clientOptions.credentials) {
+    clientOptions.accessToken = config.refreshToken;
+  }
+
+  if (config.refreshToken) {
+    clientOptions.refreshToken = config.refreshToken;
+  }
+
+  if (config.clientId) {
+    clientOptions.clientId = config.clientId;
+  }
+
+  if (config.clientSecret) {
+    clientOptions.clientSecret = config.clientSecret;
+  }
+
+  if (config.refreshToken && clientOptions.credentials) {
+    const tokenStorage = new MemoryTokenStorage();
+    tokenStorage.set({
+      accessToken: config.accessToken ?? '',
+      refreshToken: config.refreshToken,
+      expiresAt: config.accessToken ? Date.now() + 7200 * 1000 : 0,
+      tokenType: 'Bearer',
+    });
+    clientOptions.tokenStorage = tokenStorage;
+  }
+
+  client = new ParasutClient(clientOptions as ParasutClientConfig);
 
   return client;
 }
