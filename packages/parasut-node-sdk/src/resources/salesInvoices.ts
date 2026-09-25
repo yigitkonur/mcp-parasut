@@ -12,7 +12,7 @@ import type { JsonApiResource, JsonApiResponse } from '../generated/types.js';
 // ============================================================================
 
 export type InvoiceItemType = 'invoice' | 'export' | 'estimate' | 'cancelled' | 'recurring_invoice' | 'recurring_estimate' | 'refund';
-export type PaymentStatus = 'paid' | 'overdue' | 'unpaid' | 'partially_paid';
+export type PaymentStatus = 'paid' | 'overdue' | 'unpaid' | 'partially_paid' | 'not_due' | 'unscheduled';
 export type Currency = 'TRL' | 'USD' | 'EUR' | 'GBP';
 
 export interface SalesInvoiceAttributes {

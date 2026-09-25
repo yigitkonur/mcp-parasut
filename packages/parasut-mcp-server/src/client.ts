@@ -8,7 +8,6 @@
 import {
   ParasutClient,
   type ParasutClientConfig,
-  MemoryTokenStorage,
 } from '@yigitkonur/parasut-node-sdk';
 import type { ParasutConfig } from './config.js';
 
@@ -23,12 +22,8 @@ export function initializeClient(config: ParasutConfig): ParasutClient {
     return client;
   }
 
-  const clientOptions: ParasutClientConfig & {
-    refreshToken?: string;
-    clientId?: string;
-    clientSecret?: string;
-  } = {
-    companyId: config.companyId ?? 0,
+  const clientOptions: ParasutClientConfig = {
+    ...(config.companyId !== undefined && { companyId: config.companyId }),
     ...(config.baseUrl !== undefined && { baseUrl: config.baseUrl }),
   };
 
@@ -48,17 +43,9 @@ export function initializeClient(config: ParasutConfig): ParasutClient {
 
   if (config.refreshToken) {
     clientOptions.refreshToken = config.refreshToken;
-    const tokenStorage = new MemoryTokenStorage();
-    tokenStorage.set({
-      accessToken: config.accessToken ?? '',
-      refreshToken: config.refreshToken,
-      expiresAt: config.accessToken ? Date.now() + 7200 * 1000 : 0,
-      tokenType: 'Bearer',
-    });
-    clientOptions.tokenStorage = tokenStorage;
   }
 
-  client = new ParasutClient(clientOptions as ParasutClientConfig);
+  client = new ParasutClient(clientOptions);
 
   return client;
 }

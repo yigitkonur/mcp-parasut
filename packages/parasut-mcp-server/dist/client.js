@@ -4,7 +4,7 @@
  * Singleton client for the Paraşüt API.
  * Initialized once at server startup and reused for all tool calls.
  */
-import { ParasutClient, MemoryTokenStorage, } from '@yigitkonur/parasut-node-sdk';
+import { ParasutClient, } from '@yigitkonur/parasut-node-sdk';
 let client = null;
 /**
  * Initializes the Paraşüt client singleton.
@@ -15,7 +15,7 @@ export function initializeClient(config) {
         return client;
     }
     const clientOptions = {
-        companyId: config.companyId ?? 0,
+        ...(config.companyId !== undefined && { companyId: config.companyId }),
         ...(config.baseUrl !== undefined && { baseUrl: config.baseUrl }),
     };
     if (config.clientId && config.clientSecret) {
@@ -32,14 +32,6 @@ export function initializeClient(config) {
     }
     if (config.refreshToken) {
         clientOptions.refreshToken = config.refreshToken;
-        const tokenStorage = new MemoryTokenStorage();
-        tokenStorage.set({
-            accessToken: config.accessToken ?? '',
-            refreshToken: config.refreshToken,
-            expiresAt: config.accessToken ? Date.now() + 7200 * 1000 : 0,
-            tokenType: 'Bearer',
-        });
-        clientOptions.tokenStorage = tokenStorage;
     }
     client = new ParasutClient(clientOptions);
     return client;

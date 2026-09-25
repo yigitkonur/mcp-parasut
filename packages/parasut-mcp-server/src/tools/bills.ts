@@ -356,7 +356,7 @@ export async function handleCreateBill(args: unknown): Promise<ToolResponse> {
       data: {
         type: 'purchase_bills',
         attributes: {
-          item_type: 'invoice',
+          item_type: 'purchase_bill',
           issue_date: issueDate,
           due_date: params.due_date ?? issueDate,
           ...(params.invoice_no !== undefined && { invoice_no: params.invoice_no }),

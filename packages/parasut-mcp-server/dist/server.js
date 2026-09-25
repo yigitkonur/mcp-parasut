@@ -8,7 +8,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
 import { loadConfig, validateConfig } from './config.js';
-import { initializeClient } from './client.js';
+import { initializeClient, getClient } from './client.js';
 import { getAllTools, handleToolCall } from './tools/index.js';
 // Server metadata
 const SERVER_NAME = 'parasut-mcp-server';
@@ -36,6 +36,10 @@ export function createServer(config) {
     // Handle tool calls
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
+        const client = getClient();
+        if (!client.companyId) {
+            await client.resolveCompanyId();
+        }
         return handleToolCall(name, args ?? {});
     });
     return server;

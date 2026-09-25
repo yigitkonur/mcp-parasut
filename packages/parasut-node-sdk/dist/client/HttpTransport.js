@@ -120,22 +120,23 @@ export class HttpTransport {
         }
         catch (error) {
             if (error instanceof ParasutAuthError && this.config.onUnauthorized) {
+                let refreshedToken;
                 try {
-                    const refreshedToken = await this.config.onUnauthorized();
-                    if (refreshedToken) {
-                        const retriedConfig = {
-                            ...processedConfig,
-                            headers: {
-                                ...processedConfig.headers,
-                                Authorization: `Bearer ${refreshedToken}`,
-                            },
-                        };
-                        const response = await this.executeRequest(retriedConfig);
-                        return response;
-                    }
+                    refreshedToken = await this.config.onUnauthorized();
                 }
                 catch {
-                    // If refresh fails, fall through to default error handling
+                    // If token refresh itself fails, proceed to default error handling with original error
+                }
+                if (refreshedToken) {
+                    const retriedConfig = {
+                        ...processedConfig,
+                        headers: {
+                            ...processedConfig.headers,
+                            Authorization: `Bearer ${refreshedToken}`,
+                        },
+                    };
+                    const response = await this.executeRequest(retriedConfig);
+                    return response;
                 }
             }
             // Apply error interceptors
