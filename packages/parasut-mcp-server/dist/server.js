@@ -44,10 +44,20 @@ export function createServer(config) {
     });
     return server;
 }
+export { startHttpServer, createHttpServer } from './http.js';
 /**
- * Starts the MCP server with stdio transport.
+ * Starts the MCP server (stdio or HTTP depending on environment).
  */
 export async function startServer() {
+    const isHttp = process.env['MCP_TRANSPORT'] === 'http' ||
+        process.env['PORT'] !== undefined ||
+        process.argv.includes('--http');
+    if (isHttp) {
+        const config = loadConfig();
+        const { startHttpServer } = await import('./http.js');
+        await startHttpServer(config);
+        return;
+    }
     // Load and validate configuration
     const config = loadConfig();
     validateConfig(config);
@@ -58,7 +68,7 @@ export async function startServer() {
     await server.connect(transport);
     // Log to stderr (stdout is reserved for MCP protocol)
     if (config.debug) {
-        console.error(`${SERVER_NAME} v${SERVER_VERSION} started`);
+        console.error(`${SERVER_NAME} v${SERVER_VERSION} started (stdio transport)`);
         console.error(`Company ID: ${config.parasut.companyId}`);
     }
 }

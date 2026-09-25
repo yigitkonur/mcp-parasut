@@ -110,6 +110,25 @@ Add under `.cursor/mcp.json` or Cursor MCP settings:
 }
 ```
 
+### Streamable HTTP & Remote URL Mode (OAuth 2.0 / 2.1)
+
+Run the server as a standalone HTTP service with full MCP Streamable HTTP and OAuth 2.0 / 2.1 authorization (RFC 9728, RFC 8414, RFC 7591):
+
+```bash
+# Start HTTP server
+MCP_TRANSPORT=http PORT=3000 HOST=0.0.0.0 node dist/index.js
+```
+
+#### Connect with `mcpc` CLI:
+```bash
+# Authenticate via OAuth 2.0 / 2.1
+mcpc login https://your-server.com/mcp --grant client-credentials --client-id mcpc-default --client-secret dummy --profile parasut
+
+# Connect and call tools
+mcpc connect https://your-server.com/mcp @parasut --profile parasut
+mcpc @parasut tools-call get_financial_summary
+```
+
 ---
 
 ## Available Tools (34 Araç - Tam Türkçe Liste)
