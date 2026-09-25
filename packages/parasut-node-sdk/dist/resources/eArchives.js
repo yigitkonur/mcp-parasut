@@ -49,14 +49,20 @@ export class EArchivesResource extends BaseResource {
     async submitAndWait(payload, options) {
         const createResult = await this.submit(payload);
         await this.trackableJobs.poll(createResult.trackableJobId, options);
-        // Get the created e-archive from the sales invoice
-        // The e-archive ID is not directly returned, so we need to query
-        // This is a limitation of the API design
-        const response = await this.list({ page: { number: 1, size: 1 } });
-        if (response.data.length === 0) {
-            throw new Error('E-archive created but could not be retrieved');
+        // Get the created e-archive from the sales invoice active_e_document
+        const invoiceId = payload.data.relationships?.sales_invoice?.data.id;
+        if (invoiceId) {
+            const invResponse = await this.transport.get(`/${this.companyId}/sales_invoices/${invoiceId}?include=active_e_document`);
+            const includedDoc = invResponse.included?.find((item) => item.type === 'e_archives');
+            if (includedDoc) {
+                return { data: includedDoc };
+            }
+            const activeDoc = invResponse.data?.relationships?.active_e_document?.data;
+            if (activeDoc?.id) {
+                return this.get(activeDoc.id);
+            }
         }
-        return { data: response.data[0] };
+        throw new Error('E-archive created but active_e_document could not be retrieved from the sales invoice');
     }
     /**
      * Gets the PDF URL for an e-archive.

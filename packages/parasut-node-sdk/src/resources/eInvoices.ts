@@ -80,20 +80,64 @@ export class EInvoicesResource extends BaseResource<
         type: 'e_invoices';
         attributes?: EInvoiceAttributes;
         relationships?: {
+          invoice?: { data: { id: string; type: 'sales_invoices' } };
           sales_invoice?: { data: { id: string; type: 'sales_invoices' } };
-          invoice?: { data: { id: string; type: 'e_invoice_inboxes' } };
+          [key: string]: any;
         };
       };
     }
   ): Promise<{ data: { id: string; type: 'trackable_jobs' }; trackableJobId: string }> {
+    const invoiceRel = payload.data.relationships?.invoice ?? payload.data.relationships?.sales_invoice;
+    const { sales_invoice, ...remainingRelationships } = (payload.data.relationships ?? {}) as any;
+    const normalizedPayload = {
+      data: {
+        ...payload.data,
+        relationships: {
+          ...remainingRelationships,
+          ...(invoiceRel ? { invoice: { data: { id: invoiceRel.data.id, type: 'sales_invoices' as const } } } : {}),
+        },
+      },
+    };
+
     const response = await this.transport.post<{
       data: { id: string; type: 'trackable_jobs' };
-    }>(this.buildPath(), payload);
+    }>(this.buildPath(), normalizedPayload);
 
     return {
       data: response.data,
       trackableJobId: response.data.id,
     };
+  }
+
+  override async create(
+    payload: {
+      data: {
+        type: string;
+        attributes: EInvoiceAttributes;
+        relationships?: {
+          invoice?: { data: { id: string; type: 'sales_invoices' } };
+          sales_invoice?: { data: { id: string; type: 'sales_invoices' } };
+          [key: string]: any;
+        };
+      };
+    }
+  ): Promise<JsonApiResponse<EInvoice>> {
+    const invoiceRel = payload.data.relationships?.invoice ?? payload.data.relationships?.sales_invoice;
+    const { sales_invoice, ...remainingRelationships } = (payload.data.relationships ?? {}) as any;
+    const normalizedPayload = {
+      data: {
+        ...payload.data,
+        relationships: {
+          ...remainingRelationships,
+          ...(invoiceRel ? { invoice: { data: { id: invoiceRel.data.id, type: 'sales_invoices' as const } } } : {}),
+        },
+      },
+    };
+
+    return this.transport.post<JsonApiResponse<EInvoice>>(
+      this.buildPath(),
+      normalizedPayload
+    );
   }
 
   /**
@@ -105,8 +149,8 @@ export class EInvoicesResource extends BaseResource<
         type: 'e_invoices';
         attributes?: EInvoiceAttributes;
         relationships?: {
+          invoice?: { data: { id: string; type: 'sales_invoices' } };
           sales_invoice?: { data: { id: string; type: 'sales_invoices' } };
-          invoice?: { data: { id: string; type: 'e_invoice_inboxes' } };
         };
       };
     },

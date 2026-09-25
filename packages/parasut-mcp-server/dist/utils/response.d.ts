@@ -74,6 +74,7 @@ export declare function formatInvoiceSummary(invoice: {
         net_total?: string | number;
         remaining?: string | number;
         invoice_status?: string;
+        payment_status?: string;
         status?: string;
     };
 }): string;

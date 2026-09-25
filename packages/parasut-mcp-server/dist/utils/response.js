@@ -166,12 +166,13 @@ export function formatContactSummary(contact) {
  */
 export function formatInvoiceSummary(invoice) {
     const attr = invoice.attributes ?? {};
+    const invNo = attr.invoice_no ? `#${attr.invoice_no} ` : '';
     const parts = [
-        `- Invoice #${attr.invoice_no ?? invoice.id ?? 'N/A'}`,
+        `- Invoice ${invNo}(ID: ${invoice.id ?? 'N/A'})`.replace(/\s+/g, ' '),
         `  Date: ${attr.issue_date ?? 'N/A'}`,
         `  Total: ${attr.net_total ?? '0'} TRY`,
         `  Remaining: ${attr.remaining ?? '0'} TRY`,
-        `  Status: ${attr.invoice_status ?? attr.status ?? 'unknown'}`,
+        `  Status: ${attr.payment_status ?? attr.invoice_status ?? attr.status ?? 'unknown'}`,
     ];
     return parts.join('\n');
 }

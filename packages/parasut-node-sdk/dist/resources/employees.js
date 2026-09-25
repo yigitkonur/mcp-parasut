@@ -19,13 +19,13 @@ export class EmployeesResource extends BaseResource {
      * Archives an employee.
      */
     async archive(id) {
-        return this.transport.post(this.buildPath(id, '/archive'));
+        return this.transport.patch(this.buildPath(id, '/archive'));
     }
     /**
      * Unarchives an employee.
      */
     async unarchive(id) {
-        return this.transport.post(this.buildPath(id, '/unarchive'));
+        return this.transport.patch(this.buildPath(id, '/unarchive'));
     }
 }
 //# sourceMappingURL=employees.js.map

@@ -17,12 +17,16 @@ const SearchInvoicesSchema = z.object({
         .optional()
         .describe('Start date (YYYY-MM-DD)'),
     issue_date_end: z.string().optional().describe('End date (YYYY-MM-DD)'),
-    status: z
-        .enum(['draft', 'open', 'paid', 'cancelled'])
+    payment_status: z
+        .enum(['overdue', 'not_due', 'unscheduled', 'paid'])
         .optional()
-        .describe('Filter by status'),
+        .describe('Filter by payment status (overdue, not_due, unscheduled, paid)'),
+    status: z
+        .enum(['draft', 'open', 'paid', 'cancelled', 'overdue', 'not_due', 'unscheduled', 'unpaid'])
+        .optional()
+        .describe('Filter by status (mapped to payment_status or item_type)'),
     page: z.number().int().min(1).default(1).describe('Page number'),
-    limit: z.number().int().min(1).max(100).default(100).describe('Results per page (default: 100)'),
+    limit: z.number().int().min(1).max(25).default(25).describe('Results per page (default: 25)'),
 });
 const GetInvoiceSchema = z.object({
     id: z.string().describe('Invoice ID'),
@@ -126,10 +130,15 @@ Use the ID to call get_invoice for full details.
                     type: 'string',
                     description: 'End date (YYYY-MM-DD)',
                 },
+                payment_status: {
+                    type: 'string',
+                    enum: ['overdue', 'not_due', 'unscheduled', 'paid'],
+                    description: 'Filter by payment status: overdue, not_due, unscheduled, paid',
+                },
                 status: {
                     type: 'string',
-                    enum: ['draft', 'open', 'paid', 'cancelled'],
-                    description: 'Filter by status. MUST be one of: draft, open, paid, cancelled',
+                    enum: ['overdue', 'not_due', 'unscheduled', 'paid', 'open', 'unpaid', 'draft', 'cancelled'],
+                    description: 'Filter by status (mapped to payment_status or item_type)',
                 },
                 page: {
                     type: 'number',
@@ -137,7 +146,7 @@ Use the ID to call get_invoice for full details.
                 },
                 limit: {
                     type: 'number',
-                    default: 100,
+                    default: 25,
                 },
             },
         },
@@ -459,8 +468,32 @@ export async function handleSearchInvoices(args) {
             filter['contact_id'] = params.contact_id;
         if (params.issue_date_start)
             filter['issue_date'] = params.issue_date_start;
-        if (params.status)
-            filter['invoice_status'] = params.status;
+        if (params.payment_status) {
+            filter['payment_status'] = params.payment_status;
+        }
+        else if (params.status) {
+            const statusMap = {
+                paid: 'paid',
+                overdue: 'overdue',
+                not_due: 'not_due',
+                unscheduled: 'unscheduled',
+                open: 'not_due',
+                unpaid: 'not_due',
+            };
+            const mapped = statusMap[params.status];
+            if (params.status === 'draft') {
+                filter['item_type'] = 'estimate';
+            }
+            else if (params.status === 'cancelled') {
+                filter['item_type'] = 'cancelled';
+            }
+            else if (mapped) {
+                filter['payment_status'] = mapped;
+            }
+            else {
+                filter['payment_status'] = params.status;
+            }
+        }
         const response = await client.salesInvoices.list({
             filter,
             page: { number: params.page, size: params.limit },
@@ -604,17 +637,19 @@ export async function handleCreateInvoice(args) {
                 quantity: line.quantity,
                 unit_price: line.unit_price,
                 vat_rate: line.vat_rate,
-                discount_type: line.discount_type,
-                discount_value: line.discount_value,
-                description: line.description,
+                ...(line.discount_type !== undefined && { discount_type: line.discount_type }),
+                ...(line.discount_value !== undefined && { discount_value: line.discount_value }),
+                ...(line.description !== undefined && { description: line.description }),
             },
-            relationships: line.product_id
+            ...(line.product_id
                 ? {
-                    product: {
-                        data: { id: line.product_id, type: 'products' },
+                    relationships: {
+                        product: {
+                            data: { id: line.product_id, type: 'products' },
+                        },
                     },
                 }
-                : undefined,
+                : {}),
         }));
         const response = await client.salesInvoices.create({
             data: {
@@ -633,10 +668,7 @@ export async function handleCreateInvoice(args) {
                         data: { id: params.contact_id, type: 'contacts' },
                     },
                     details: {
-                        data: details.map((_, i) => ({
-                            id: `temp-${i}`,
-                            type: 'sales_invoice_details',
-                        })),
+                        data: details,
                     },
                 },
             },
@@ -733,39 +765,56 @@ export async function handleInvoicePdf(args) {
     try {
         const params = InvoicePdfSchema.parse(args);
         const client = getClient();
-        // First, try to find an existing e-archive for this invoice
-        const eArchives = await client.eArchives.list({
-            page: { number: 1, size: 25 },
+        // Check if the invoice exists and inspect active_e_document relationship
+        const invoice = await client.salesInvoices.get(params.id, {
+            include: ['active_e_document'],
         });
-        // Look for an e-archive associated with this invoice
-        // If found, get its PDF
-        for (const archive of eArchives.data) {
-            if (archive.attributes.printable_url) {
+        if (!invoice.data) {
+            return formatNotFound('Invoice', params.id, [
+                { action: 'Search invoices', example: 'search_invoices()' },
+            ]);
+        }
+        const activeDoc = invoice.data.relationships?.active_e_document?.data;
+        if (activeDoc?.id) {
+            if (activeDoc.type === 'e_archives') {
+                const result = await client.eArchives.pdf(activeDoc.id);
                 return formatSuccess({
-                    url: archive.attributes.printable_url,
-                    note: 'PDF URL from e-archive',
+                    invoice_id: params.id,
+                    e_archive_id: activeDoc.id,
+                    url: result.url,
+                    expires_at: result.expiresAt,
                 }, {
-                    summary: 'PDF found',
-                    notes: ['This is the e-archive PDF for the invoice'],
+                    summary: `e-Archive PDF available for Invoice #${invoice.data.attributes.invoice_no ?? params.id}`,
+                });
+            }
+            else if (activeDoc.type === 'e_invoices') {
+                const result = await client.eInvoices.pdf(activeDoc.id);
+                return formatSuccess({
+                    invoice_id: params.id,
+                    e_invoice_id: activeDoc.id,
+                    url: result.url,
+                    expires_at: result.expiresAt,
+                }, {
+                    summary: `e-Invoice PDF available for Invoice #${invoice.data.attributes.invoice_no ?? params.id}`,
                 });
             }
         }
-        // If no e-archive found, explain how to generate PDF
+        // If no active e-document found, explain how to generate PDF
         return formatSuccess({
             invoice_id: params.id,
             pdf_available: false,
-            message: 'No PDF found. Generate PDF by sending as e-archive first.',
+            message: 'No PDF found. This invoice has not been issued as an e-document (e-archive or e-invoice) yet.',
         }, {
             summary: 'No PDF available yet',
             nextSteps: [
                 {
-                    action: 'Send as e-archive to generate PDF',
+                    action: 'Send as e-archive or e-invoice to generate official PDF',
                     example: `send_earchive(invoice_id="${params.id}")`,
                 },
             ],
             notes: [
-                'Invoice PDFs are generated through the e-archive system',
-                'After sending as e-archive, a PDF will be available',
+                'Invoice PDFs in Paraşüt are generated when the invoice is issued as an e-archive or e-invoice',
+                'Official PDFs become downloadable once GİB/Paraşüt processing is complete',
             ],
         });
     }
@@ -814,7 +863,8 @@ export async function handleRecordInvoicePayment(args) {
                 attributes: {
                     date: paymentDate,
                     amount: params.amount,
-                    ...(params.description !== undefined && { notes: params.description }),
+                    ...(params.description !== undefined && { description: params.description, notes: params.description }),
+                    ...(params.account_id !== undefined && !isNaN(Number(params.account_id)) && { account_id: Number(params.account_id) }),
                 },
                 ...(params.account_id !== undefined && {
                     relationships: {

@@ -73,7 +73,7 @@ export class SalesOffersResource extends BaseResource<
    * Archives a sales offer.
    */
   async archive(id: string | number): Promise<JsonApiResponse<SalesOffer>> {
-    return this.transport.post<JsonApiResponse<SalesOffer>>(
+    return this.transport.patch<JsonApiResponse<SalesOffer>>(
       this.buildPath(id, '/archive')
     );
   }
@@ -82,7 +82,7 @@ export class SalesOffersResource extends BaseResource<
    * Unarchives a sales offer.
    */
   async unarchive(id: string | number): Promise<JsonApiResponse<SalesOffer>> {
-    return this.transport.post<JsonApiResponse<SalesOffer>>(
+    return this.transport.patch<JsonApiResponse<SalesOffer>>(
       this.buildPath(id, '/unarchive')
     );
   }

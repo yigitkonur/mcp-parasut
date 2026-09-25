@@ -14,7 +14,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { loadConfig, validateConfig, type ServerConfig } from './config.js';
-import { initializeClient } from './client.js';
+import { initializeClient, getClient } from './client.js';
 import { getAllTools, handleToolCall } from './tools/index.js';
 
 // Server metadata
@@ -50,6 +50,10 @@ export function createServer(config: ServerConfig): Server {
   // Handle tool calls
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    const client = getClient();
+    if (!client.companyId) {
+      await client.resolveCompanyId();
+    }
     return handleToolCall(name, args ?? {});
   });
 

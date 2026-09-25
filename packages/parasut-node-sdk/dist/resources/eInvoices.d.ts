@@ -48,18 +48,19 @@ export declare class EInvoicesResource extends BaseResource<EInvoice, EInvoiceAt
             type: 'e_invoices';
             attributes?: EInvoiceAttributes;
             relationships?: {
+                invoice?: {
+                    data: {
+                        id: string;
+                        type: 'sales_invoices';
+                    };
+                };
                 sales_invoice?: {
                     data: {
                         id: string;
                         type: 'sales_invoices';
                     };
                 };
-                invoice?: {
-                    data: {
-                        id: string;
-                        type: 'e_invoice_inboxes';
-                    };
-                };
+                [key: string]: any;
             };
         };
     }): Promise<{
@@ -69,6 +70,27 @@ export declare class EInvoicesResource extends BaseResource<EInvoice, EInvoiceAt
         };
         trackableJobId: string;
     }>;
+    create(payload: {
+        data: {
+            type: string;
+            attributes: EInvoiceAttributes;
+            relationships?: {
+                invoice?: {
+                    data: {
+                        id: string;
+                        type: 'sales_invoices';
+                    };
+                };
+                sales_invoice?: {
+                    data: {
+                        id: string;
+                        type: 'sales_invoices';
+                    };
+                };
+                [key: string]: any;
+            };
+        };
+    }): Promise<JsonApiResponse<EInvoice>>;
     /**
      * Submits an e-invoice and waits for completion.
      */
@@ -77,16 +99,16 @@ export declare class EInvoicesResource extends BaseResource<EInvoice, EInvoiceAt
             type: 'e_invoices';
             attributes?: EInvoiceAttributes;
             relationships?: {
-                sales_invoice?: {
+                invoice?: {
                     data: {
                         id: string;
                         type: 'sales_invoices';
                     };
                 };
-                invoice?: {
+                sales_invoice?: {
                     data: {
                         id: string;
-                        type: 'e_invoice_inboxes';
+                        type: 'sales_invoices';
                     };
                 };
             };

@@ -6,6 +6,7 @@
  */
 
 import { ParasutAuthError, ParasutConfigError, ParasutNetworkError } from './errors.js';
+import { getOrInitProxyDispatcher } from './HttpTransport.js';
 
 // ============================================================================
 // Types
@@ -14,8 +15,19 @@ import { ParasutAuthError, ParasutConfigError, ParasutNetworkError } from './err
 export interface OAuthCredentials {
   clientId: string;
   clientSecret: string;
-  username: string;
-  password: string;
+  username?: string | undefined;
+  password?: string | undefined;
+  refreshToken?: string | undefined;
+}
+
+export interface OAuthOptions {
+  tokenUrl?: string | undefined;
+  storage?: TokenStorage | undefined;
+  accessToken?: string | undefined;
+  refreshToken?: string | undefined;
+  expiresIn?: number | undefined;
+  fetch?: typeof fetch | undefined;
+  fetchOptions?: (RequestInit & Record<string, any>) | undefined;
 }
 
 export interface OAuthToken {
@@ -70,7 +82,10 @@ export class OAuthManager {
   private readonly tokenUrl: string;
   private readonly credentials: OAuthCredentials;
   private readonly storage: TokenStorage;
+  private readonly customFetch?: typeof fetch | undefined;
+  private readonly fetchOptions?: (RequestInit & Record<string, any>) | undefined;
   private refreshPromise: Promise<OAuthToken> | null = null;
+  private initialTokenPromise?: Promise<void> | undefined;
 
   /**
    * Buffer time before token expiry to trigger refresh (60 seconds)
@@ -79,21 +94,43 @@ export class OAuthManager {
 
   constructor(
     credentials: OAuthCredentials,
-    options?: {
-      tokenUrl?: string;
-      storage?: TokenStorage;
-    }
+    options?: OAuthOptions
   ) {
     this.credentials = credentials;
     this.tokenUrl = options?.tokenUrl ?? 'https://api.parasut.com/oauth/token';
     this.storage = options?.storage ?? new MemoryTokenStorage();
+    this.customFetch = options?.fetch;
+    this.fetchOptions = options?.fetchOptions;
 
     // Validate credentials
     if (!credentials.clientId || !credentials.clientSecret) {
       throw new ParasutConfigError('clientId and clientSecret are required');
     }
-    if (!credentials.username || !credentials.password) {
+
+    const hasInitialToken = Boolean(
+      options?.refreshToken ||
+      credentials.refreshToken ||
+      options?.accessToken
+    );
+
+    if (!hasInitialToken && (!credentials.username || !credentials.password)) {
       throw new ParasutConfigError('username and password are required');
+    }
+
+    // Preload initial tokens into storage if provided
+    const initialAccessToken = options?.accessToken;
+    const initialRefreshToken = options?.refreshToken ?? credentials.refreshToken;
+
+    if (initialAccessToken || initialRefreshToken) {
+      const initialToken: OAuthToken = {
+        accessToken: initialAccessToken ?? '',
+        refreshToken: initialRefreshToken ?? '',
+        expiresAt: initialAccessToken
+          ? Date.now() + (options?.expiresIn ?? 7200) * 1000
+          : 0,
+        tokenType: 'bearer',
+      };
+      this.initialTokenPromise = this.storage.set(initialToken);
     }
   }
 
@@ -102,6 +139,11 @@ export class OAuthManager {
    * Handles concurrent refresh requests to prevent multiple refreshes.
    */
   async getValidToken(): Promise<string> {
+    if (this.initialTokenPromise) {
+      await this.initialTokenPromise;
+      this.initialTokenPromise = undefined;
+    }
+
     // Check if we have a cached token
     const token = await this.storage.get();
 
@@ -116,25 +158,54 @@ export class OAuthManager {
     }
 
     // If we have a refresh token, try to refresh
-    if (token?.refreshToken) {
+    const refreshTokenToUse = token?.refreshToken || this.credentials.refreshToken;
+    if (refreshTokenToUse) {
       try {
-        const newToken = await this.refreshToken(token.refreshToken);
+        const newToken = await this.refreshToken(refreshTokenToUse);
         return newToken.accessToken;
       } catch (error) {
-        // If refresh fails, fall through to password grant
-        console.warn('Token refresh failed, attempting password grant');
+        // If refresh fails, fall through to password grant ONLY if credentials are provided
+        if (this.credentials.username && this.credentials.password) {
+          console.warn('Token refresh failed, attempting password grant');
+        } else {
+          throw error;
+        }
       }
     }
 
-    // No valid token, perform password grant
+    // No valid token, perform password grant if credentials available
+    if (!this.credentials.username || !this.credentials.password) {
+      throw new ParasutAuthError([
+        {
+          title: 'Authentication Failed',
+          detail: 'No valid token available and username/password credentials were not provided for password grant.',
+        },
+      ]);
+    }
+
     const newToken = await this.authenticate();
     return newToken.accessToken;
+  }
+
+  /**
+   * Returns current token from storage.
+   */
+  async getToken(): Promise<OAuthToken | null> {
+    if (this.initialTokenPromise) {
+      await this.initialTokenPromise;
+      this.initialTokenPromise = undefined;
+    }
+    return this.storage.get();
   }
 
   /**
    * Performs password grant authentication.
    */
   async authenticate(): Promise<OAuthToken> {
+    if (!this.credentials.username || !this.credentials.password) {
+      throw new ParasutConfigError('username and password are required for password grant authentication');
+    }
+
     // Prevent concurrent authentication attempts
     if (this.refreshPromise) {
       return this.refreshPromise;
@@ -153,13 +224,27 @@ export class OAuthManager {
   /**
    * Refreshes the token using the refresh token.
    */
-  async refreshToken(refreshToken: string): Promise<OAuthToken> {
+  async refreshToken(refreshToken?: string): Promise<OAuthToken> {
+    const tokenToUse =
+      refreshToken ??
+      (await this.storage.get())?.refreshToken ??
+      this.credentials.refreshToken;
+
+    if (!tokenToUse) {
+      throw new ParasutAuthError([
+        {
+          title: 'No Refresh Token',
+          detail: 'No refresh token available to refresh access token',
+        },
+      ]);
+    }
+
     // Prevent concurrent refresh attempts
     if (this.refreshPromise) {
       return this.refreshPromise;
     }
 
-    this.refreshPromise = this.performRefresh(refreshToken);
+    this.refreshPromise = this.performRefresh(tokenToUse);
 
     try {
       const token = await this.refreshPromise;
@@ -180,6 +265,9 @@ export class OAuthManager {
    * Checks if a token is still valid.
    */
   private isTokenValid(token: OAuthToken): boolean {
+    if (!token.accessToken) {
+      return false;
+    }
     return Date.now() < token.expiresAt - this.expiryBuffer;
   }
 
@@ -191,8 +279,8 @@ export class OAuthManager {
       grant_type: 'password',
       client_id: this.credentials.clientId,
       client_secret: this.credentials.clientSecret,
-      username: this.credentials.username,
-      password: this.credentials.password,
+      username: this.credentials.username ?? '',
+      password: this.credentials.password ?? '',
       redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
     });
 
@@ -218,13 +306,28 @@ export class OAuthManager {
    */
   private async requestToken(body: URLSearchParams): Promise<OAuthToken> {
     try {
-      const response = await fetch(this.tokenUrl, {
+      const fetchFn = this.customFetch ?? fetch;
+      const proxyDispatcher = !this.fetchOptions?.['dispatcher']
+        ? await getOrInitProxyDispatcher()
+        : undefined;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...((this.fetchOptions?.headers as Record<string, string> | undefined) ?? {}),
+      };
+
+      const fetchOptions: RequestInit = {
+        ...this.fetchOptions,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers,
         body: body.toString(),
-      });
+      };
+
+      if (proxyDispatcher) {
+        (fetchOptions as Record<string, unknown>)['dispatcher'] = proxyDispatcher;
+      }
+
+      const response = await fetchFn(this.tokenUrl, fetchOptions);
 
       if (!response.ok) {
         const errorBody = await response.text();
@@ -282,9 +385,14 @@ export interface AuthCodeConfig {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
-  tokenUrl?: string;
-  authorizeUrl?: string;
-  storage?: TokenStorage;
+  tokenUrl?: string | undefined;
+  authorizeUrl?: string | undefined;
+  storage?: TokenStorage | undefined;
+  accessToken?: string | undefined;
+  refreshToken?: string | undefined;
+  expiresIn?: number | undefined;
+  fetch?: typeof fetch | undefined;
+  fetchOptions?: (RequestInit & Record<string, any>) | undefined;
 }
 
 export class AuthCodeManager {
@@ -293,6 +401,7 @@ export class AuthCodeManager {
   private readonly authorizeUrl: string;
   private readonly storage: TokenStorage;
   private refreshPromise: Promise<OAuthToken> | null = null;
+  private initialTokenPromise?: Promise<void> | undefined;
   private readonly expiryBuffer = 60_000;
 
   constructor(config: AuthCodeConfig) {
@@ -300,6 +409,21 @@ export class AuthCodeManager {
     this.tokenUrl = config.tokenUrl ?? 'https://api.parasut.com/oauth/token';
     this.authorizeUrl = config.authorizeUrl ?? 'https://api.parasut.com/oauth/authorize';
     this.storage = config.storage ?? new MemoryTokenStorage();
+
+    const initialAccessToken = config.accessToken;
+    const initialRefreshToken = config.refreshToken;
+
+    if (initialAccessToken || initialRefreshToken) {
+      const initialToken: OAuthToken = {
+        accessToken: initialAccessToken ?? '',
+        refreshToken: initialRefreshToken ?? '',
+        expiresAt: initialAccessToken
+          ? Date.now() + (config.expiresIn ?? 7200) * 1000
+          : 0,
+        tokenType: 'bearer',
+      };
+      this.initialTokenPromise = this.storage.set(initialToken);
+    }
   }
 
   /**
@@ -338,6 +462,11 @@ export class AuthCodeManager {
    * Returns a valid access token, refreshing if necessary.
    */
   async getValidToken(): Promise<string> {
+    if (this.initialTokenPromise) {
+      await this.initialTokenPromise;
+      this.initialTokenPromise = undefined;
+    }
+
     const token = await this.storage.get();
 
     if (token && this.isTokenValid(token)) {
@@ -388,18 +517,36 @@ export class AuthCodeManager {
   }
 
   private isTokenValid(token: OAuthToken): boolean {
+    if (!token.accessToken) {
+      return false;
+    }
     return Date.now() < token.expiresAt - this.expiryBuffer;
   }
 
   private async requestToken(body: URLSearchParams): Promise<OAuthToken> {
     try {
-      const response = await fetch(this.tokenUrl, {
+      const fetchFn = this.config.fetch ?? fetch;
+      const proxyDispatcher = !this.config.fetchOptions?.['dispatcher']
+        ? await getOrInitProxyDispatcher()
+        : undefined;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...((this.config.fetchOptions?.headers as Record<string, string> | undefined) ?? {}),
+      };
+
+      const fetchOptions: RequestInit = {
+        ...this.config.fetchOptions,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers,
         body: body.toString(),
-      });
+      };
+
+      if (proxyDispatcher) {
+        (fetchOptions as Record<string, unknown>)['dispatcher'] = proxyDispatcher;
+      }
+
+      const response = await fetchFn(this.tokenUrl, fetchOptions);
 
       if (!response.ok) {
         const errorBody = await response.text();

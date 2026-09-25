@@ -37,4 +37,29 @@ export class TransactionsResource extends BaseResource<
       resourceType: 'transactions',
     });
   }
+
+  /**
+   * Lists transactions for a specific account.
+   * Note: Paraşüt API does not support global /transactions listing; transactions are scoped to accounts.
+   */
+  async listForAccount(
+    accountId: string | number,
+    options?: {
+      filter?: TransactionFilters;
+      page?: { number?: number; size?: number };
+      sort?: string;
+    }
+  ): Promise<{
+    data: Transaction[];
+    meta?: any;
+    links?: any;
+  }> {
+    const path = `/${this.companyId}/accounts/${accountId}/transactions`;
+    const query: Record<string, string | number | undefined> = {};
+    if (options?.filter?.date) query['filter[date]'] = options.filter.date;
+    if (options?.sort) query['sort'] = options.sort;
+    if (options?.page?.number) query['page[number]'] = options.page.number;
+    if (options?.page?.size) query['page[size]'] = Math.min(options.page.size, 25);
+    return this.transport.get(path, query);
+  }
 }

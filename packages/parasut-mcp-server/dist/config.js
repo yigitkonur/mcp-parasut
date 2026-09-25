@@ -13,7 +13,7 @@ function getEnv(name, required = false) {
 }
 function getEnvInt(name, required = false) {
     const value = getEnv(name, required);
-    if (value === undefined)
+    if (value === undefined || value === '')
         return undefined;
     const parsed = parseInt(value, 10);
     if (isNaN(parsed)) {
@@ -24,26 +24,44 @@ function getEnvInt(name, required = false) {
 /**
  * Loads configuration from environment variables.
  *
- * Required environment variables:
- * - PARASUT_COMPANY_ID: Your Paraşüt company ID (firma ID)
- * - PARASUT_CLIENT_ID: OAuth client ID
- * - PARASUT_CLIENT_SECRET: OAuth client secret
- * - PARASUT_USERNAME: Your Paraşüt username (email)
- * - PARASUT_PASSWORD: Your Paraşüt password
+ * Supported authentication methods:
+ * 1. Token-based:
+ *    - PARASUT_ACCESS_TOKEN: Static OAuth access token
+ *    - PARASUT_REFRESH_TOKEN: OAuth refresh token
+ * 2. Password grant:
+ *    - PARASUT_CLIENT_ID: OAuth client ID
+ *    - PARASUT_CLIENT_SECRET: OAuth client secret
+ *    - PARASUT_USERNAME: Your Paraşüt username (email)
+ *    - PARASUT_PASSWORD: Your Paraşüt password
  *
- * Optional:
+ * Additional environment variables:
+ * - PARASUT_COMPANY_ID: Your Paraşüt company ID (firma ID, integer)
  * - PARASUT_BASE_URL: API base URL (default: https://api.parasut.com/v4)
  * - DEBUG: Enable debug logging (default: false)
  */
 export function loadConfig() {
+    const companyId = getEnvInt('PARASUT_COMPANY_ID');
+    const clientId = getEnv('PARASUT_CLIENT_ID');
+    const clientSecret = getEnv('PARASUT_CLIENT_SECRET');
+    const username = getEnv('PARASUT_USERNAME');
+    const password = getEnv('PARASUT_PASSWORD');
+    const accessToken = getEnv('PARASUT_ACCESS_TOKEN');
+    const refreshToken = getEnv('PARASUT_REFRESH_TOKEN');
     const baseUrl = getEnv('PARASUT_BASE_URL');
+    const hasToken = Boolean(accessToken || refreshToken);
+    const hasPasswordCredentials = Boolean(username && password);
+    if (!hasToken && !hasPasswordCredentials) {
+        throw new Error('At least one authentication method must be provided: (PARASUT_ACCESS_TOKEN / PARASUT_REFRESH_TOKEN) or (PARASUT_USERNAME and PARASUT_PASSWORD)');
+    }
     return {
         parasut: {
-            companyId: getEnvInt('PARASUT_COMPANY_ID', true),
-            clientId: getEnv('PARASUT_CLIENT_ID', true),
-            clientSecret: getEnv('PARASUT_CLIENT_SECRET', true),
-            username: getEnv('PARASUT_USERNAME', true),
-            password: getEnv('PARASUT_PASSWORD', true),
+            ...(companyId !== undefined && { companyId }),
+            ...(clientId !== undefined && { clientId }),
+            ...(clientSecret !== undefined && { clientSecret }),
+            ...(username !== undefined && { username }),
+            ...(password !== undefined && { password }),
+            ...(accessToken !== undefined && { accessToken }),
+            ...(refreshToken !== undefined && { refreshToken }),
             ...(baseUrl !== undefined && { baseUrl }),
         },
         debug: getEnv('DEBUG') === 'true',
@@ -55,20 +73,27 @@ export function loadConfig() {
  */
 export function validateConfig(config) {
     const { parasut } = config;
-    if (parasut.companyId <= 0) {
+    if (parasut.companyId !== undefined && parasut.companyId <= 0) {
         throw new Error('PARASUT_COMPANY_ID must be a positive integer');
     }
-    if (!parasut.clientId.trim()) {
-        throw new Error('PARASUT_CLIENT_ID cannot be empty');
+    const hasToken = Boolean(parasut.accessToken || parasut.refreshToken);
+    const hasPasswordCredentials = Boolean(parasut.username && parasut.password);
+    if (!hasToken && !hasPasswordCredentials) {
+        throw new Error('At least one authentication method must be provided: (accessToken/refreshToken) or (username and password)');
     }
-    if (!parasut.clientSecret.trim()) {
-        throw new Error('PARASUT_CLIENT_SECRET cannot be empty');
-    }
-    if (!parasut.username.trim()) {
-        throw new Error('PARASUT_USERNAME cannot be empty');
-    }
-    if (!parasut.password.trim()) {
-        throw new Error('PARASUT_PASSWORD cannot be empty');
+    if (hasPasswordCredentials) {
+        if (!parasut.username?.trim()) {
+            throw new Error('PARASUT_USERNAME cannot be empty');
+        }
+        if (!parasut.password?.trim()) {
+            throw new Error('PARASUT_PASSWORD cannot be empty');
+        }
+        if (parasut.clientId !== undefined && !parasut.clientId.trim()) {
+            throw new Error('PARASUT_CLIENT_ID cannot be empty');
+        }
+        if (parasut.clientSecret !== undefined && !parasut.clientSecret.trim()) {
+            throw new Error('PARASUT_CLIENT_SECRET cannot be empty');
+        }
     }
 }
 //# sourceMappingURL=config.js.map

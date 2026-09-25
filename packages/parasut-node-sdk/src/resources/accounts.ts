@@ -105,4 +105,24 @@ export class AccountsResource extends BaseResource<
   async listBankAccounts() {
     return this.list({ filter: { account_type: 'bank' } });
   }
+
+  /**
+   * Lists transactions for a specific account.
+   */
+  async listTransactions(
+    accountId: string | number,
+    options?: {
+      filter?: { date?: string };
+      page?: { number?: number; size?: number };
+      sort?: string;
+    }
+  ): Promise<JsonApiResponse<JsonApiResource[]>> {
+    const path = this.buildPath(accountId, '/transactions');
+    const query: Record<string, string | number | undefined> = {};
+    if (options?.filter?.date) query['filter[date]'] = options.filter.date;
+    if (options?.sort) query['sort'] = options.sort;
+    if (options?.page?.number) query['page[number]'] = options.page.number;
+    if (options?.page?.size) query['page[size]'] = Math.min(options.page.size, 25);
+    return this.transport.get<JsonApiResponse<JsonApiResource[]>>(path, query);
+  }
 }

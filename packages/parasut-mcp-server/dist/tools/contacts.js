@@ -30,9 +30,9 @@ const SearchContactsSchema = z.object({
         .number()
         .int()
         .min(1)
-        .max(100)
-        .default(100)
-        .describe('Results per page (1-100, default: 100)'),
+        .max(25)
+        .default(25)
+        .describe('Results per page (1-25, default: 25)'),
 });
 const GetContactSchema = z.object({
     id: z.string().describe('Contact ID'),
@@ -118,8 +118,8 @@ Use the ID to call get_contact for full details or create_invoice for invoicing.
                 },
                 limit: {
                     type: 'number',
-                    description: 'Results per page (1-100, default: 100)',
-                    default: 100,
+                    description: 'Results per page (1-25, default: 25)',
+                    default: 25,
                 },
             },
         },

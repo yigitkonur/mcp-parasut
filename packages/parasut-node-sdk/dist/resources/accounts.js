@@ -39,5 +39,21 @@ export class AccountsResource extends BaseResource {
     async listBankAccounts() {
         return this.list({ filter: { account_type: 'bank' } });
     }
+    /**
+     * Lists transactions for a specific account.
+     */
+    async listTransactions(accountId, options) {
+        const path = this.buildPath(accountId, '/transactions');
+        const query = {};
+        if (options?.filter?.date)
+            query['filter[date]'] = options.filter.date;
+        if (options?.sort)
+            query['sort'] = options.sort;
+        if (options?.page?.number)
+            query['page[number]'] = options.page.number;
+        if (options?.page?.size)
+            query['page[size]'] = Math.min(options.page.size, 25);
+        return this.transport.get(path, query);
+    }
 }
 //# sourceMappingURL=accounts.js.map

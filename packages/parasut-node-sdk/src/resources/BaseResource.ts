@@ -127,7 +127,7 @@ export abstract class BaseResource<
     id: string | number,
     payload: { data: { id: string; type: string; attributes?: Partial<TAttributes>; relationships?: Record<string, unknown> } }
   ): Promise<JsonApiResponse<TResource>> {
-    return this.transport.patch<JsonApiResponse<TResource>>(
+    return this.transport.put<JsonApiResponse<TResource>>(
       this.buildPath(id),
       payload
     );

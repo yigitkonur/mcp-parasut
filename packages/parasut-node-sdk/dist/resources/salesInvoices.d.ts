@@ -6,7 +6,7 @@
 import { BaseResource, type ResourceConfig } from './BaseResource.js';
 import type { JsonApiResource, JsonApiResponse } from '../generated/types.js';
 export type InvoiceItemType = 'invoice' | 'export' | 'estimate' | 'cancelled' | 'recurring_invoice' | 'recurring_estimate' | 'refund';
-export type PaymentStatus = 'paid' | 'overdue' | 'unpaid' | 'partially_paid';
+export type PaymentStatus = 'paid' | 'overdue' | 'unpaid' | 'partially_paid' | 'not_due' | 'unscheduled';
 export type Currency = 'TRL' | 'USD' | 'EUR' | 'GBP';
 export interface SalesInvoiceAttributes {
     readonly created_at?: string;
@@ -65,7 +65,9 @@ export interface SalesInvoiceFilters {
 export interface PaymentAttributes {
     date: string;
     amount: number;
+    description?: string;
     notes?: string;
+    account_id?: number;
     exchange_rate?: number;
     payment_method_id?: number;
 }

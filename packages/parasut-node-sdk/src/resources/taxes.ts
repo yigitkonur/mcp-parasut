@@ -39,13 +39,13 @@ export class TaxesResource extends BaseResource<Tax, TaxAttributes, TaxFilters> 
   }
 
   async archive(id: string | number): Promise<JsonApiResponse<Tax>> {
-    return this.transport.post<JsonApiResponse<Tax>>(
+    return this.transport.patch<JsonApiResponse<Tax>>(
       this.buildPath(id, '/archive')
     );
   }
 
   async unarchive(id: string | number): Promise<JsonApiResponse<Tax>> {
-    return this.transport.post<JsonApiResponse<Tax>>(
+    return this.transport.patch<JsonApiResponse<Tax>>(
       this.buildPath(id, '/unarchive')
     );
   }
@@ -55,7 +55,13 @@ export class TaxesResource extends BaseResource<Tax, TaxAttributes, TaxFilters> 
     payload: {
       data: {
         type: 'payments';
-        attributes: { date: string; amount: number; notes?: string };
+        attributes: {
+          date: string;
+          amount: number;
+          description?: string;
+          notes?: string;
+          account_id?: number;
+        };
         relationships?: { account?: { data: { id: string; type: 'accounts' } } };
       };
     }

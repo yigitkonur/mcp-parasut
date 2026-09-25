@@ -34,7 +34,9 @@ export declare class TaxesResource extends BaseResource<Tax, TaxAttributes, TaxF
             attributes: {
                 date: string;
                 amount: number;
+                description?: string;
                 notes?: string;
+                account_id?: number;
             };
             relationships?: {
                 account?: {

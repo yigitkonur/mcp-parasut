@@ -7,6 +7,7 @@
 
 import {
   createApiError,
+  ParasutAuthError,
   ParasutNetworkError,
   ParasutTimeoutError,
 } from './errors.js';
@@ -18,16 +19,59 @@ import {
 export interface RequestConfig {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
-  query?: Record<string, string | number | boolean | undefined>;
+  query?: Record<string, string | number | boolean | undefined> | undefined;
   body?: unknown;
-  headers?: Record<string, string>;
-  timeout?: number;
+  headers?: Record<string, string> | undefined;
+  timeout?: number | undefined;
+  fetch?: typeof fetch | undefined;
+  fetchOptions?: (RequestInit & Record<string, any>) | undefined;
 }
 
 export interface TransportConfig {
   baseUrl: string;
   timeout: number;
-  headers?: Record<string, string>;
+  headers?: Record<string, string> | undefined;
+  fetch?: typeof fetch | undefined;
+  fetchOptions?: (RequestInit & Record<string, any>) | undefined;
+  onUnauthorized?: (() => Promise<string | undefined>) | undefined;
+}
+
+/**
+ * Returns proxy URL configured via environment variables, if any.
+ */
+export function getProxyUrl(): string | undefined {
+  if (typeof process === 'undefined' || !process?.env) {
+    return undefined;
+  }
+  return (
+    process.env['HTTPS_PROXY'] ||
+    process.env['https_proxy'] ||
+    process.env['HTTP_PROXY'] ||
+    process.env['http_proxy'] ||
+    process.env['ALL_PROXY'] ||
+    process.env['all_proxy']
+  );
+}
+
+let cachedProxyDispatcher: unknown = undefined;
+let proxyAttempted = false;
+
+export async function getOrInitProxyDispatcher(): Promise<unknown> {
+  if (proxyAttempted) return cachedProxyDispatcher;
+  proxyAttempted = true;
+  const proxyUrl = getProxyUrl();
+  if (!proxyUrl) return undefined;
+
+  try {
+    // @ts-ignore - undici may be provided by the host environment or user
+    const undiciMod = (await import('undici')) as any;
+    if (undiciMod && undiciMod.ProxyAgent) {
+      cachedProxyDispatcher = new undiciMod.ProxyAgent(proxyUrl);
+    }
+  } catch {
+    // undici not available or not installed
+  }
+  return cachedProxyDispatcher;
 }
 
 export interface RequestInterceptor {
@@ -138,6 +182,27 @@ export class HttpTransport {
       const response = await this.executeRequest(processedConfig);
       return response as T;
     } catch (error) {
+      if (error instanceof ParasutAuthError && this.config.onUnauthorized) {
+        let refreshedToken: string | undefined;
+        try {
+          refreshedToken = await this.config.onUnauthorized();
+        } catch {
+          // If token refresh itself fails, proceed to default error handling with original error
+        }
+
+        if (refreshedToken) {
+          const retriedConfig = {
+            ...processedConfig,
+            headers: {
+              ...processedConfig.headers,
+              Authorization: `Bearer ${refreshedToken}`,
+            },
+          };
+          const response = await this.executeRequest(retriedConfig);
+          return response as T;
+        }
+      }
+
       // Apply error interceptors
       let processedError = error instanceof Error ? error : new Error(String(error));
       for (const interceptor of this.errorInterceptors) {
@@ -166,11 +231,22 @@ export class HttpTransport {
       headers['Content-Type'] = 'application/vnd.api+json';
     }
 
+    const proxyDispatcher =
+      !this.config.fetchOptions?.['dispatcher'] && !config.fetchOptions?.['dispatcher']
+        ? await getOrInitProxyDispatcher()
+        : undefined;
+
     // Prepare request options
     const fetchOptions: RequestInit = {
+      ...this.config.fetchOptions,
+      ...config.fetchOptions,
       method: config.method,
       headers,
     };
+
+    if (proxyDispatcher) {
+      (fetchOptions as Record<string, unknown>)['dispatcher'] = proxyDispatcher;
+    }
 
     if (config.body !== undefined) {
       fetchOptions.body = JSON.stringify(config.body);
@@ -184,8 +260,10 @@ export class HttpTransport {
       controller.abort();
     }, timeout);
 
+    const fetchFn = config.fetch ?? this.config.fetch ?? fetch;
+
     try {
-      const response = await fetch(url, fetchOptions);
+      const response = await fetchFn(url, fetchOptions);
       clearTimeout(timeoutId);
 
       return await this.handleResponse(response);

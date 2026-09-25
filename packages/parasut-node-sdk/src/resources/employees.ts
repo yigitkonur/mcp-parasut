@@ -53,7 +53,7 @@ export class EmployeesResource extends BaseResource<
    * Archives an employee.
    */
   async archive(id: string | number): Promise<JsonApiResponse<Employee>> {
-    return this.transport.post<JsonApiResponse<Employee>>(
+    return this.transport.patch<JsonApiResponse<Employee>>(
       this.buildPath(id, '/archive')
     );
   }
@@ -62,7 +62,7 @@ export class EmployeesResource extends BaseResource<
    * Unarchives an employee.
    */
   async unarchive(id: string | number): Promise<JsonApiResponse<Employee>> {
-    return this.transport.post<JsonApiResponse<Employee>>(
+    return this.transport.patch<JsonApiResponse<Employee>>(
       this.buildPath(id, '/unarchive')
     );
   }

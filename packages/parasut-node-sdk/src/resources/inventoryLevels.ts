@@ -35,8 +35,16 @@ export class InventoryLevelsResource extends BaseResource<
     });
   }
 
-  async getForProduct(productId: number) {
-    return this.list({ filter: { product_id: productId } });
+  async getForProduct(productId: number | string, options?: { page?: { number?: number; size?: number } }) {
+    const path = `/${this.companyId}/products/${productId}/inventory_levels`;
+    const query: Record<string, number | undefined> = {};
+    if (options?.page?.number) query['page[number]'] = options.page.number;
+    if (options?.page?.size) query['page[size]'] = Math.min(options.page.size, 25);
+    return this.transport.get<{
+      data: InventoryLevel[];
+      included?: any[];
+      meta?: any;
+    }>(path, query);
   }
 
   async getForWarehouse(warehouseId: number) {

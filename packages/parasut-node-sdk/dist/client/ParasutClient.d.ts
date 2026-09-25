@@ -4,7 +4,7 @@
  * Main entry point for the Paraşüt SDK.
  * Provides a resource tree for accessing all API endpoints.
  */
-import { type OAuthCredentials, type TokenStorage } from './OAuth.js';
+import { OAuthManager, type OAuthCredentials, type TokenStorage } from './OAuth.js';
 import { RateLimiter, type RateLimitConfig } from './RateLimiter.js';
 import { RetryHandler, type RetryConfig } from './RetryHandler.js';
 import { TrackableJobsResource } from '../resources/trackableJobs.js';
@@ -31,41 +31,56 @@ import { TransactionsResource } from '../resources/transactions.js';
 export interface ParasutClientConfig {
     /**
      * Company ID (Firma ID) to use for API requests.
+     * Optional initially; can be resolved via getMe() or resolveCompanyId().
      */
-    companyId: number;
+    companyId?: number | undefined;
     /**
      * OAuth credentials for authentication.
-     * Required unless accessToken is provided.
+     * Required unless accessToken or refreshToken is provided.
      */
-    credentials?: OAuthCredentials;
+    credentials?: OAuthCredentials | undefined;
     /**
-     * Static access token.
-     * Use this for testing or when you manage tokens yourself.
+     * Static access token or initial access token.
+     * Use this for testing, when you manage tokens yourself, or with refreshToken.
      */
-    accessToken?: string;
+    accessToken?: string | undefined;
+    /**
+     * Refresh token for OAuth2 token refresh.
+     * When provided along with credentials (clientId & clientSecret),
+     * OAuthManager will automatically refresh expired tokens.
+     */
+    refreshToken?: string | undefined;
     /**
      * Base URL for the API.
      * @default 'https://api.parasut.com/v4'
      */
-    baseUrl?: string;
+    baseUrl?: string | undefined;
     /**
      * Request timeout in milliseconds.
      * @default 30000
      */
-    timeout?: number;
+    timeout?: number | undefined;
     /**
      * Custom token storage for persisting OAuth tokens.
      * Defaults to in-memory storage.
      */
-    tokenStorage?: TokenStorage;
+    tokenStorage?: TokenStorage | undefined;
     /**
      * Rate limiting configuration.
      */
-    rateLimit?: Partial<RateLimitConfig>;
+    rateLimit?: Partial<RateLimitConfig> | undefined;
     /**
      * Retry configuration.
      */
-    retry?: Partial<RetryConfig>;
+    retry?: Partial<RetryConfig> | undefined;
+    /**
+     * Custom fetch function (e.g. for proxy support, mocking, or environment polyfills).
+     */
+    fetch?: typeof fetch | undefined;
+    /**
+     * Custom fetch options merged into every request (e.g. dispatcher, agent).
+     */
+    fetchOptions?: (RequestInit & Record<string, any>) | undefined;
 }
 export declare class ParasutClient {
     private readonly transport;
@@ -79,7 +94,7 @@ export declare class ParasutClient {
     readonly retryHandler: RetryHandler;
     private readonly oauth?;
     private readonly staticToken?;
-    private readonly companyId;
+    private _companyId?;
     private _trackableJobs?;
     private _accounts?;
     private _contacts?;
@@ -103,9 +118,36 @@ export declare class ParasutClient {
     private _transactions?;
     constructor(config: ParasutClientConfig);
     /**
+     * Current company ID if set.
+     */
+    get companyId(): number | undefined;
+    set companyId(value: number | undefined);
+    /**
+     * OAuthManager instance if configured.
+     */
+    get oauthManager(): OAuthManager | undefined;
+    /**
      * Gets a valid access token.
      */
     private getToken;
+    /**
+     * Returns the company ID if set, or throws a ParasutConfigError if not.
+     */
+    getCompanyId(): number;
+    /**
+     * Queries the `/me` endpoint with user roles, companies, and profile included.
+     * If companyId was not provided (or is 0), automatically discovers and sets
+     * this.companyId to the first available company ID.
+     */
+    getMe(): Promise<any>;
+    /**
+     * Resolves the company ID, discovering it via getMe() if not already set.
+     */
+    resolveCompanyId(): Promise<number>;
+    /**
+     * Resets cached resource instances when companyId changes.
+     */
+    private resetResources;
     /**
      * Creates a resource config.
      */

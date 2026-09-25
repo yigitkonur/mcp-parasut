@@ -14,7 +14,7 @@ const SearchProductsSchema = z.object({
     query: z.string().optional().describe('Search by name or code'),
     category_id: z.string().optional().describe('Filter by category'),
     page: z.number().int().min(1).default(1),
-    limit: z.number().int().min(1).max(100).default(100),
+    limit: z.number().int().min(1).max(25).default(25),
 });
 const GetProductSchema = z.object({
     id: z.string().describe('Product ID'),
@@ -65,7 +65,7 @@ Use the ID in create_invoice lines.
                 query: { type: 'string', description: 'Search by name or code' },
                 category_id: { type: 'string', description: 'Filter by category' },
                 page: { type: 'number', default: 1 },
-                limit: { type: 'number', default: 100 },
+                limit: { type: 'number', default: 25 },
             },
         },
     },

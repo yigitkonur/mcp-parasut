@@ -15,7 +15,7 @@ const SearchBillsSchema = z.object({
     issue_date_start: z.string().optional().describe('Start date (YYYY-MM-DD)'),
     issue_date_end: z.string().optional().describe('End date (YYYY-MM-DD)'),
     page: z.number().int().min(1).default(1),
-    limit: z.number().int().min(1).max(100).default(100),
+    limit: z.number().int().min(1).max(25).default(25),
 });
 const GetBillSchema = z.object({
     id: z.string().describe('Bill ID'),
@@ -26,6 +26,7 @@ const BillLineSchema = z.object({
     unit_price: z.number().describe('Unit price'),
     vat_rate: z.number().min(0).max(100).default(20),
     category_id: z.string().optional().describe('Expense category ID'),
+    product_id: z.string().optional().describe('Product ID (optional)'),
 });
 const CreateBillSchema = z.object({
     supplier_id: z.string().describe('Supplier contact ID'),
@@ -41,6 +42,7 @@ const RecordBillPaymentSchema = z.object({
     amount: z.number().positive().describe('Payment amount'),
     date: z.string().optional().describe('Payment date'),
     account_id: z.string().optional().describe('Account ID'),
+    description: z.string().optional().describe('Payment description / note'),
     confirm: z.boolean().optional().describe('⚠️ Set to true to confirm payment. Required to execute.'),
 });
 // ============================================================================
@@ -73,7 +75,7 @@ Use the ID to call get_bill for full details.
                 issue_date_start: { type: 'string', description: 'Start date (YYYY-MM-DD)' },
                 issue_date_end: { type: 'string', description: 'End date (YYYY-MM-DD)' },
                 page: { type: 'number', default: 1 },
-                limit: { type: 'number', default: 100 },
+                limit: { type: 'number', default: 25 },
             },
         },
     },
@@ -150,6 +152,7 @@ Use the ID for record_bill_payment.
                             unit_price: { type: 'number' },
                             vat_rate: { type: 'number' },
                             category_id: { type: 'string' },
+                            product_id: { type: 'string' },
                         },
                         required: ['description', 'unit_price'],
                     },
@@ -192,6 +195,7 @@ With confirm=true: Payment record with: payment_id, amount.
                 confirm: { type: 'boolean', description: '⚠️ Set to true to confirm payment. Required to execute.' },
                 date: { type: 'string', description: 'Payment date (YYYY-MM-DD)' },
                 account_id: { type: 'string', description: 'Bank/cash account ID' },
+                description: { type: 'string', description: 'Payment description / note' },
             },
             required: ['bill_id', 'amount'],
         },
@@ -303,18 +307,39 @@ export async function handleCreateBill(args) {
                 ],
             });
         }
+        const details = params.lines.map((line) => ({
+            type: 'purchase_bill_details',
+            attributes: {
+                description: line.description,
+                quantity: line.quantity ?? 1,
+                unit_price: line.unit_price,
+                vat_rate: line.vat_rate ?? 20,
+            },
+            ...(line.product_id
+                ? {
+                    relationships: {
+                        product: {
+                            data: { id: line.product_id, type: 'products' },
+                        },
+                    },
+                }
+                : {}),
+        }));
         const response = await client.purchaseBills.create({
             data: {
                 type: 'purchase_bills',
                 attributes: {
-                    item_type: 'invoice',
+                    item_type: 'purchase_bill',
                     issue_date: issueDate,
-                    ...(params.due_date !== undefined && { due_date: params.due_date }),
+                    due_date: params.due_date ?? issueDate,
                     ...(params.invoice_no !== undefined && { invoice_no: params.invoice_no }),
                     currency: params.currency,
                 },
                 relationships: {
                     supplier: { data: { id: params.supplier_id, type: 'contacts' } },
+                    details: {
+                        data: details,
+                    },
                 },
             },
         });
@@ -367,6 +392,8 @@ export async function handleRecordBillPayment(args) {
                 attributes: {
                     date: paymentDate,
                     amount: params.amount,
+                    ...(params.description !== undefined && { description: params.description, notes: params.description }),
+                    ...(params.account_id !== undefined && !isNaN(Number(params.account_id)) && { account_id: Number(params.account_id) }),
                 },
                 ...(params.account_id !== undefined && {
                     relationships: {

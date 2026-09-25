@@ -5,7 +5,10 @@
  * Initialized once at server startup and reused for all tool calls.
  */
 
-import { ParasutClient } from '@yigitkonur/parasut-node-sdk';
+import {
+  ParasutClient,
+  type ParasutClientConfig,
+} from '@yigitkonur/parasut-node-sdk';
 import type { ParasutConfig } from './config.js';
 
 let client: ParasutClient | null = null;
@@ -19,16 +22,30 @@ export function initializeClient(config: ParasutConfig): ParasutClient {
     return client;
   }
 
-  client = new ParasutClient({
-    companyId: config.companyId,
-    credentials: {
+  const clientOptions: ParasutClientConfig = {
+    ...(config.companyId !== undefined && { companyId: config.companyId }),
+    ...(config.baseUrl !== undefined && { baseUrl: config.baseUrl }),
+  };
+
+  if (config.clientId && config.clientSecret) {
+    clientOptions.credentials = {
       clientId: config.clientId,
       clientSecret: config.clientSecret,
-      username: config.username,
-      password: config.password,
-    },
-    ...(config.baseUrl !== undefined && { baseUrl: config.baseUrl }),
-  });
+      ...(config.username !== undefined && { username: config.username }),
+      ...(config.password !== undefined && { password: config.password }),
+      ...(config.refreshToken !== undefined && { refreshToken: config.refreshToken }),
+    };
+  }
+
+  if (config.accessToken) {
+    clientOptions.accessToken = config.accessToken;
+  }
+
+  if (config.refreshToken) {
+    clientOptions.refreshToken = config.refreshToken;
+  }
+
+  client = new ParasutClient(clientOptions);
 
   return client;
 }

@@ -45,13 +45,13 @@ export class BankFeesResource extends BaseResource<
   }
 
   async archive(id: string | number): Promise<JsonApiResponse<BankFee>> {
-    return this.transport.post<JsonApiResponse<BankFee>>(
+    return this.transport.patch<JsonApiResponse<BankFee>>(
       this.buildPath(id, '/archive')
     );
   }
 
   async unarchive(id: string | number): Promise<JsonApiResponse<BankFee>> {
-    return this.transport.post<JsonApiResponse<BankFee>>(
+    return this.transport.patch<JsonApiResponse<BankFee>>(
       this.buildPath(id, '/unarchive')
     );
   }
@@ -61,7 +61,13 @@ export class BankFeesResource extends BaseResource<
     payload: {
       data: {
         type: 'payments';
-        attributes: { date: string; amount: number; notes?: string };
+        attributes: {
+          date: string;
+          amount: number;
+          description?: string;
+          notes?: string;
+          account_id?: number;
+        };
         relationships?: { account?: { data: { id: string; type: 'accounts' } } };
       };
     }

@@ -61,7 +61,7 @@ export class BaseResource {
      * Updates an existing resource.
      */
     async update(id, payload) {
-        return this.transport.patch(this.buildPath(id), payload);
+        return this.transport.put(this.buildPath(id), payload);
     }
     /**
      * Deletes a resource.

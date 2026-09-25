@@ -67,5 +67,18 @@ export declare class AccountsResource extends BaseResource<Account, AccountAttri
      * Lists bank accounts.
      */
     listBankAccounts(): Promise<import("./BaseResource.js").PaginatedResponse<Account>>;
+    /**
+     * Lists transactions for a specific account.
+     */
+    listTransactions(accountId: string | number, options?: {
+        filter?: {
+            date?: string;
+        };
+        page?: {
+            number?: number;
+            size?: number;
+        };
+        sort?: string;
+    }): Promise<JsonApiResponse<JsonApiResource[]>>;
 }
 //# sourceMappingURL=accounts.d.ts.map
