@@ -7,16 +7,25 @@
 export interface RequestConfig {
     method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     path: string;
-    query?: Record<string, string | number | boolean | undefined>;
+    query?: Record<string, string | number | boolean | undefined> | undefined;
     body?: unknown;
-    headers?: Record<string, string>;
-    timeout?: number;
+    headers?: Record<string, string> | undefined;
+    timeout?: number | undefined;
+    fetch?: typeof fetch | undefined;
+    fetchOptions?: (RequestInit & Record<string, any>) | undefined;
 }
 export interface TransportConfig {
     baseUrl: string;
     timeout: number;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | undefined;
+    fetch?: typeof fetch | undefined;
+    fetchOptions?: (RequestInit & Record<string, any>) | undefined;
 }
+/**
+ * Returns proxy URL configured via environment variables, if any.
+ */
+export declare function getProxyUrl(): string | undefined;
+export declare function getOrInitProxyDispatcher(): Promise<unknown>;
 export interface RequestInterceptor {
     (config: RequestConfig): RequestConfig | Promise<RequestConfig>;
 }

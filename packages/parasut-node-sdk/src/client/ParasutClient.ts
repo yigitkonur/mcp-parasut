@@ -6,7 +6,7 @@
  */
 
 import { HttpTransport, type TransportConfig } from './HttpTransport.js';
-import { OAuthManager, type OAuthCredentials, type TokenStorage } from './OAuth.js';
+import { OAuthManager, type OAuthCredentials, type OAuthOptions, type TokenStorage } from './OAuth.js';
 import { RateLimiter, type RateLimitConfig, DEFAULT_RATE_LIMIT_CONFIG } from './RateLimiter.js';
 import { RetryHandler, type RetryConfig, DEFAULT_RETRY_CONFIG } from './RetryHandler.js';
 import { ParasutConfigError, ParasutAuthError } from './errors.js';
@@ -41,48 +41,66 @@ import { TransactionsResource } from '../resources/transactions.js';
 export interface ParasutClientConfig {
   /**
    * Company ID (Firma ID) to use for API requests.
+   * Optional initially; can be resolved via getMe() or resolveCompanyId().
    */
-  companyId: number;
+  companyId?: number | undefined;
 
   /**
    * OAuth credentials for authentication.
-   * Required unless accessToken is provided.
+   * Required unless accessToken or refreshToken is provided.
    */
-  credentials?: OAuthCredentials;
+  credentials?: OAuthCredentials | undefined;
 
   /**
-   * Static access token.
-   * Use this for testing or when you manage tokens yourself.
+   * Static access token or initial access token.
+   * Use this for testing, when you manage tokens yourself, or with refreshToken.
    */
-  accessToken?: string;
+  accessToken?: string | undefined;
+
+  /**
+   * Refresh token for OAuth2 token refresh.
+   * When provided along with credentials (clientId & clientSecret),
+   * OAuthManager will automatically refresh expired tokens.
+   */
+  refreshToken?: string | undefined;
 
   /**
    * Base URL for the API.
    * @default 'https://api.parasut.com/v4'
    */
-  baseUrl?: string;
+  baseUrl?: string | undefined;
 
   /**
    * Request timeout in milliseconds.
    * @default 30000
    */
-  timeout?: number;
+  timeout?: number | undefined;
 
   /**
    * Custom token storage for persisting OAuth tokens.
    * Defaults to in-memory storage.
    */
-  tokenStorage?: TokenStorage;
+  tokenStorage?: TokenStorage | undefined;
 
   /**
    * Rate limiting configuration.
    */
-  rateLimit?: Partial<RateLimitConfig>;
+  rateLimit?: Partial<RateLimitConfig> | undefined;
 
   /**
    * Retry configuration.
    */
-  retry?: Partial<RetryConfig>;
+  retry?: Partial<RetryConfig> | undefined;
+
+  /**
+   * Custom fetch function (e.g. for proxy support, mocking, or environment polyfills).
+   */
+  fetch?: typeof fetch | undefined;
+
+  /**
+   * Custom fetch options merged into every request (e.g. dispatcher, agent).
+   */
+  fetchOptions?: (RequestInit & Record<string, any>) | undefined;
 }
 
 // ============================================================================
@@ -99,52 +117,68 @@ export class ParasutClient {
    * Retry handler instance (exposed for advanced use cases).
    */
   readonly retryHandler: RetryHandler;
-  private readonly oauth?: OAuthManager;
-  private readonly staticToken?: string;
-  private readonly companyId: number;
+  private readonly oauth?: OAuthManager | undefined;
+  private readonly staticToken?: string | undefined;
+  private _companyId?: number | undefined;
 
   // Resources (lazy-initialized)
-  private _trackableJobs?: TrackableJobsResource;
-  private _accounts?: AccountsResource;
-  private _contacts?: ContactsResource;
-  private _products?: ProductsResource;
-  private _salesInvoices?: SalesInvoicesResource;
-  private _salesOffers?: SalesOffersResource;
-  private _purchaseBills?: PurchaseBillsResource;
-  private _eArchives?: EArchivesResource;
-  private _eInvoices?: EInvoicesResource;
-  private _eInvoiceInboxes?: EInvoiceInboxesResource;
-  private _eSmms?: ESmmsResource;
-  private _bankFees?: BankFeesResource;
-  private _salaries?: SalariesResource;
-  private _taxes?: TaxesResource;
-  private _employees?: EmployeesResource;
-  private _inventoryLevels?: InventoryLevelsResource;
-  private _stockMovements?: StockMovementsResource;
-  private _shipmentDocuments?: ShipmentDocumentsResource;
-  private _tags?: TagsResource;
-  private _itemCategories?: ItemCategoriesResource;
-  private _transactions?: TransactionsResource;
+  private _trackableJobs?: TrackableJobsResource | undefined;
+  private _accounts?: AccountsResource | undefined;
+  private _contacts?: ContactsResource | undefined;
+  private _products?: ProductsResource | undefined;
+  private _salesInvoices?: SalesInvoicesResource | undefined;
+  private _salesOffers?: SalesOffersResource | undefined;
+  private _purchaseBills?: PurchaseBillsResource | undefined;
+  private _eArchives?: EArchivesResource | undefined;
+  private _eInvoices?: EInvoicesResource | undefined;
+  private _eInvoiceInboxes?: EInvoiceInboxesResource | undefined;
+  private _eSmms?: ESmmsResource | undefined;
+  private _bankFees?: BankFeesResource | undefined;
+  private _salaries?: SalariesResource | undefined;
+  private _taxes?: TaxesResource | undefined;
+  private _employees?: EmployeesResource | undefined;
+  private _inventoryLevels?: InventoryLevelsResource | undefined;
+  private _stockMovements?: StockMovementsResource | undefined;
+  private _shipmentDocuments?: ShipmentDocumentsResource | undefined;
+  private _tags?: TagsResource | undefined;
+  private _itemCategories?: ItemCategoriesResource | undefined;
+  private _transactions?: TransactionsResource | undefined;
 
   constructor(config: ParasutClientConfig) {
-    // Validate configuration
-    if (!config.companyId) {
-      throw new ParasutConfigError('companyId is required');
-    }
+    this._companyId = config.companyId;
 
-    if (!config.credentials && !config.accessToken) {
-      throw new ParasutConfigError('Either credentials or accessToken is required');
-    }
+    const refreshToken = config.refreshToken ?? config.credentials?.refreshToken;
+    const clientId = config.credentials?.clientId;
+    const clientSecret = config.credentials?.clientSecret;
 
-    this.companyId = config.companyId;
+    const oauthOptions: OAuthOptions = {
+      ...(config.accessToken !== undefined && { accessToken: config.accessToken }),
+      ...(refreshToken !== undefined && { refreshToken }),
+      ...(config.tokenStorage !== undefined && { storage: config.tokenStorage }),
+      ...(config.fetch !== undefined && { fetch: config.fetch }),
+      ...(config.fetchOptions !== undefined && { fetchOptions: config.fetchOptions }),
+    };
 
     // Set up authentication
-    if (config.credentials) {
-      this.oauth = new OAuthManager(config.credentials, {
-        ...(config.tokenStorage !== undefined && { storage: config.tokenStorage }),
-      });
+    if (clientId && clientSecret && (config.credentials?.username || refreshToken)) {
+      this.oauth = new OAuthManager(
+        {
+          ...config.credentials,
+          clientId,
+          clientSecret,
+          ...(refreshToken !== undefined && { refreshToken }),
+        },
+        oauthOptions
+      );
     } else if (config.accessToken !== undefined) {
       this.staticToken = config.accessToken;
+    } else if (config.credentials) {
+      // Delegating incomplete credentials to OAuthManager will throw appropriate ParasutConfigError
+      this.oauth = new OAuthManager(config.credentials, oauthOptions);
+    } else {
+      throw new ParasutConfigError(
+        'Either credentials, refreshToken (with clientId/clientSecret), or accessToken is required'
+      );
     }
 
     // Set up rate limiter
@@ -163,6 +197,8 @@ export class ParasutClient {
     const transportConfig: TransportConfig = {
       baseUrl: config.baseUrl ?? 'https://api.parasut.com/v4',
       timeout: config.timeout ?? 30_000,
+      ...(config.fetch !== undefined && { fetch: config.fetch }),
+      ...(config.fetchOptions !== undefined && { fetchOptions: config.fetchOptions }),
     };
 
     this.transport = new HttpTransport(transportConfig);
@@ -178,6 +214,25 @@ export class ParasutClient {
         },
       };
     });
+  }
+
+  /**
+   * Current company ID if set.
+   */
+  get companyId(): number | undefined {
+    return this._companyId;
+  }
+
+  set companyId(value: number | undefined) {
+    this._companyId = value;
+    this.resetResources();
+  }
+
+  /**
+   * OAuthManager instance if configured.
+   */
+  get oauthManager(): OAuthManager | undefined {
+    return this.oauth;
   }
 
   /**
@@ -198,12 +253,118 @@ export class ParasutClient {
   }
 
   /**
+   * Returns the company ID if set, or throws a ParasutConfigError if not.
+   */
+  getCompanyId(): number {
+    if (!this._companyId) {
+      throw new ParasutConfigError(
+        'companyId is required to access company resources. Provide companyId in config or call client.getMe() to discover and set it.'
+      );
+    }
+    return this._companyId;
+  }
+
+  /**
+   * Queries the `/me` endpoint with user roles, companies, and profile included.
+   * If companyId was not provided (or is 0), automatically discovers and sets
+   * this.companyId to the first available company ID.
+   */
+  async getMe(): Promise<any> {
+    const response = await this.transport.get<any>('/me?include=user_roles,companies,profile');
+
+    if (!this._companyId || this._companyId === 0) {
+      let discoveredId: number | undefined;
+
+      // 1. Try to find company in JSON:API included array
+      if (Array.isArray(response?.included)) {
+        const company = response.included.find(
+          (item: any) => item.type === 'companies' && item.id !== undefined
+        );
+        if (company?.id) {
+          discoveredId = Number(company.id);
+        }
+      }
+
+      // 2. Try relationships.companies.data
+      if (!discoveredId && Array.isArray(response?.data?.relationships?.companies?.data)) {
+        const companyRel = response.data.relationships.companies.data.find(
+          (item: any) => item.id !== undefined
+        );
+        if (companyRel?.id) {
+          discoveredId = Number(companyRel.id);
+        }
+      }
+
+      // 3. Fallback for non-JSON:API or simplified mock responses (e.g. { companies: [{ id: 123 }] })
+      if (!discoveredId && Array.isArray(response?.companies) && response.companies.length > 0) {
+        const firstComp = response.companies[0];
+        const rawId = typeof firstComp === 'object' ? firstComp.id : firstComp;
+        if (rawId) {
+          discoveredId = Number(rawId);
+        }
+      }
+
+      if (discoveredId && !Number.isNaN(discoveredId)) {
+        this.companyId = discoveredId;
+      }
+    }
+
+    return response;
+  }
+
+  /**
+   * Resolves the company ID, discovering it via getMe() if not already set.
+   */
+  async resolveCompanyId(): Promise<number> {
+    if (this._companyId && this._companyId !== 0) {
+      return this._companyId;
+    }
+
+    await this.getMe();
+
+    if (!this._companyId || this._companyId === 0) {
+      throw new ParasutConfigError(
+        'Could not resolve companyId: no companies found in user profile'
+      );
+    }
+
+    return this._companyId;
+  }
+
+  /**
+   * Resets cached resource instances when companyId changes.
+   */
+  private resetResources(): void {
+    this._trackableJobs = undefined;
+    this._accounts = undefined;
+    this._contacts = undefined;
+    this._products = undefined;
+    this._salesInvoices = undefined;
+    this._salesOffers = undefined;
+    this._purchaseBills = undefined;
+    this._eArchives = undefined;
+    this._eInvoices = undefined;
+    this._eInvoiceInboxes = undefined;
+    this._eSmms = undefined;
+    this._bankFees = undefined;
+    this._salaries = undefined;
+    this._taxes = undefined;
+    this._employees = undefined;
+    this._inventoryLevels = undefined;
+    this._stockMovements = undefined;
+    this._shipmentDocuments = undefined;
+    this._tags = undefined;
+    this._itemCategories = undefined;
+    this._transactions = undefined;
+  }
+
+  /**
    * Creates a resource config.
    */
   private getResourceConfig() {
     return {
       transport: this.transport,
-      companyId: this.companyId,
+      companyId: this.getCompanyId(),
     };
   }
 
@@ -216,7 +377,7 @@ export class ParasutClient {
    */
   get trackableJobs(): TrackableJobsResource {
     if (!this._trackableJobs) {
-      this._trackableJobs = new TrackableJobsResource(this.transport, this.companyId);
+      this._trackableJobs = new TrackableJobsResource(this.transport, this.getCompanyId());
     }
     return this._trackableJobs;
   }

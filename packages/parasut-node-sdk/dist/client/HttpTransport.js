@@ -5,6 +5,41 @@
  * and JSON:API content type support.
  */
 import { createApiError, ParasutNetworkError, ParasutTimeoutError, } from './errors.js';
+/**
+ * Returns proxy URL configured via environment variables, if any.
+ */
+export function getProxyUrl() {
+    if (typeof process === 'undefined' || !process?.env) {
+        return undefined;
+    }
+    return (process.env['HTTPS_PROXY'] ||
+        process.env['https_proxy'] ||
+        process.env['HTTP_PROXY'] ||
+        process.env['http_proxy'] ||
+        process.env['ALL_PROXY'] ||
+        process.env['all_proxy']);
+}
+let cachedProxyDispatcher = undefined;
+let proxyAttempted = false;
+export async function getOrInitProxyDispatcher() {
+    if (proxyAttempted)
+        return cachedProxyDispatcher;
+    proxyAttempted = true;
+    const proxyUrl = getProxyUrl();
+    if (!proxyUrl)
+        return undefined;
+    try {
+        // @ts-ignore - undici may be provided by the host environment or user
+        const undiciMod = (await import('undici'));
+        if (undiciMod && undiciMod.ProxyAgent) {
+            cachedProxyDispatcher = new undiciMod.ProxyAgent(proxyUrl);
+        }
+    }
+    catch {
+        // undici not available or not installed
+    }
+    return cachedProxyDispatcher;
+}
 // ============================================================================
 // Query Serialization
 // ============================================================================
@@ -108,11 +143,19 @@ export class HttpTransport {
         if (config.body !== undefined && !headers['Content-Type']) {
             headers['Content-Type'] = 'application/vnd.api+json';
         }
+        const proxyDispatcher = !this.config.fetchOptions?.['dispatcher'] && !config.fetchOptions?.['dispatcher']
+            ? await getOrInitProxyDispatcher()
+            : undefined;
         // Prepare request options
         const fetchOptions = {
+            ...this.config.fetchOptions,
+            ...config.fetchOptions,
             method: config.method,
             headers,
         };
+        if (proxyDispatcher) {
+            fetchOptions['dispatcher'] = proxyDispatcher;
+        }
         if (config.body !== undefined) {
             fetchOptions.body = JSON.stringify(config.body);
         }
@@ -122,8 +165,9 @@ export class HttpTransport {
         const timeoutId = setTimeout(() => {
             controller.abort();
         }, timeout);
+        const fetchFn = config.fetch ?? this.config.fetch ?? fetch;
         try {
-            const response = await fetch(url, fetchOptions);
+            const response = await fetchFn(url, fetchOptions);
             clearTimeout(timeoutId);
             return await this.handleResponse(response);
         }

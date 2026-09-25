@@ -38,7 +38,8 @@
  * ```
  */
 export { ParasutClient, type ParasutClientConfig } from './client/ParasutClient.js';
-export { OAuthManager, AuthCodeManager, MemoryTokenStorage, type OAuthCredentials, type OAuthToken, type TokenStorage, type AuthCodeConfig, } from './client/OAuth.js';
+export { OAuthManager, AuthCodeManager, MemoryTokenStorage, type OAuthCredentials, type OAuthOptions, type OAuthToken, type TokenStorage, type AuthCodeConfig, } from './client/OAuth.js';
+export { HttpTransport, getProxyUrl, type RequestConfig, type TransportConfig, type RequestInterceptor, type ResponseInterceptor, type ErrorInterceptor, } from './client/HttpTransport.js';
 export { ParasutError, ParasutApiError, ParasutAuthError, ParasutForbiddenError, ParasutNotFoundError, ParasutValidationError, ParasutRateLimitError, ParasutNetworkError, ParasutTimeoutError, ParasutConfigError, type ApiErrorDetail, } from './client/errors.js';
 export { type RateLimitConfig, DEFAULT_RATE_LIMIT_CONFIG } from './client/RateLimiter.js';
 export { type RetryConfig, DEFAULT_RETRY_CONFIG } from './client/RetryHandler.js';
