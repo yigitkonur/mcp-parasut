@@ -46,6 +46,10 @@ export { ParasutClient } from './client/ParasutClient.js';
 // ============================================================================
 export { OAuthManager, AuthCodeManager, MemoryTokenStorage, } from './client/OAuth.js';
 // ============================================================================
+// Transport
+// ============================================================================
+export { HttpTransport, getProxyUrl, } from './client/HttpTransport.js';
+// ============================================================================
 // Errors
 // ============================================================================
 export { ParasutError, ParasutApiError, ParasutAuthError, ParasutForbiddenError, ParasutNotFoundError, ParasutValidationError, ParasutRateLimitError, ParasutNetworkError, ParasutTimeoutError, ParasutConfigError, } from './client/errors.js';

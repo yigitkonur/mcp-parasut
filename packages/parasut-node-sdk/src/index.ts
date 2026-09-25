@@ -53,10 +53,25 @@ export {
   AuthCodeManager,
   MemoryTokenStorage,
   type OAuthCredentials,
+  type OAuthOptions,
   type OAuthToken,
   type TokenStorage,
   type AuthCodeConfig,
 } from './client/OAuth.js';
+
+// ============================================================================
+// Transport
+// ============================================================================
+
+export {
+  HttpTransport,
+  getProxyUrl,
+  type RequestConfig,
+  type TransportConfig,
+  type RequestInterceptor,
+  type ResponseInterceptor,
+  type ErrorInterceptor,
+} from './client/HttpTransport.js';
 
 // ============================================================================
 // Errors

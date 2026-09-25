@@ -46,7 +46,7 @@ export class ParasutClient {
     retryHandler;
     oauth;
     staticToken;
-    companyId;
+    _companyId;
     // Resources (lazy-initialized)
     _trackableJobs;
     _accounts;
@@ -70,22 +70,35 @@ export class ParasutClient {
     _itemCategories;
     _transactions;
     constructor(config) {
-        // Validate configuration
-        if (!config.companyId) {
-            throw new ParasutConfigError('companyId is required');
-        }
-        if (!config.credentials && !config.accessToken) {
-            throw new ParasutConfigError('Either credentials or accessToken is required');
-        }
-        this.companyId = config.companyId;
+        this._companyId = config.companyId;
+        const refreshToken = config.refreshToken ?? config.credentials?.refreshToken;
+        const clientId = config.credentials?.clientId;
+        const clientSecret = config.credentials?.clientSecret;
+        const oauthOptions = {
+            ...(config.accessToken !== undefined && { accessToken: config.accessToken }),
+            ...(refreshToken !== undefined && { refreshToken }),
+            ...(config.tokenStorage !== undefined && { storage: config.tokenStorage }),
+            ...(config.fetch !== undefined && { fetch: config.fetch }),
+            ...(config.fetchOptions !== undefined && { fetchOptions: config.fetchOptions }),
+        };
         // Set up authentication
-        if (config.credentials) {
-            this.oauth = new OAuthManager(config.credentials, {
-                ...(config.tokenStorage !== undefined && { storage: config.tokenStorage }),
-            });
+        if (clientId && clientSecret && (config.credentials?.username || refreshToken)) {
+            this.oauth = new OAuthManager({
+                ...config.credentials,
+                clientId,
+                clientSecret,
+                ...(refreshToken !== undefined && { refreshToken }),
+            }, oauthOptions);
         }
         else if (config.accessToken !== undefined) {
             this.staticToken = config.accessToken;
+        }
+        else if (config.credentials) {
+            // Delegating incomplete credentials to OAuthManager will throw appropriate ParasutConfigError
+            this.oauth = new OAuthManager(config.credentials, oauthOptions);
+        }
+        else {
+            throw new ParasutConfigError('Either credentials, refreshToken (with clientId/clientSecret), or accessToken is required');
         }
         // Set up rate limiter
         this.rateLimiter = new RateLimiter({
@@ -101,6 +114,8 @@ export class ParasutClient {
         const transportConfig = {
             baseUrl: config.baseUrl ?? 'https://api.parasut.com/v4',
             timeout: config.timeout ?? 30_000,
+            ...(config.fetch !== undefined && { fetch: config.fetch }),
+            ...(config.fetchOptions !== undefined && { fetchOptions: config.fetchOptions }),
         };
         this.transport = new HttpTransport(transportConfig);
         // Add auth interceptor
@@ -114,6 +129,22 @@ export class ParasutClient {
                 },
             };
         });
+    }
+    /**
+     * Current company ID if set.
+     */
+    get companyId() {
+        return this._companyId;
+    }
+    set companyId(value) {
+        this._companyId = value;
+        this.resetResources();
+    }
+    /**
+     * OAuthManager instance if configured.
+     */
+    get oauthManager() {
+        return this.oauth;
     }
     /**
      * Gets a valid access token.
@@ -130,12 +161,97 @@ export class ParasutClient {
         ]);
     }
     /**
+     * Returns the company ID if set, or throws a ParasutConfigError if not.
+     */
+    getCompanyId() {
+        if (!this._companyId) {
+            throw new ParasutConfigError('companyId is required to access company resources. Provide companyId in config or call client.getMe() to discover and set it.');
+        }
+        return this._companyId;
+    }
+    /**
+     * Queries the `/me` endpoint with user roles, companies, and profile included.
+     * If companyId was not provided (or is 0), automatically discovers and sets
+     * this.companyId to the first available company ID.
+     */
+    async getMe() {
+        const response = await this.transport.get('/me?include=user_roles,companies,profile');
+        if (!this._companyId || this._companyId === 0) {
+            let discoveredId;
+            // 1. Try to find company in JSON:API included array
+            if (Array.isArray(response?.included)) {
+                const company = response.included.find((item) => item.type === 'companies' && item.id !== undefined);
+                if (company?.id) {
+                    discoveredId = Number(company.id);
+                }
+            }
+            // 2. Try relationships.companies.data
+            if (!discoveredId && Array.isArray(response?.data?.relationships?.companies?.data)) {
+                const companyRel = response.data.relationships.companies.data.find((item) => item.id !== undefined);
+                if (companyRel?.id) {
+                    discoveredId = Number(companyRel.id);
+                }
+            }
+            // 3. Fallback for non-JSON:API or simplified mock responses (e.g. { companies: [{ id: 123 }] })
+            if (!discoveredId && Array.isArray(response?.companies) && response.companies.length > 0) {
+                const firstComp = response.companies[0];
+                const rawId = typeof firstComp === 'object' ? firstComp.id : firstComp;
+                if (rawId) {
+                    discoveredId = Number(rawId);
+                }
+            }
+            if (discoveredId && !Number.isNaN(discoveredId)) {
+                this.companyId = discoveredId;
+            }
+        }
+        return response;
+    }
+    /**
+     * Resolves the company ID, discovering it via getMe() if not already set.
+     */
+    async resolveCompanyId() {
+        if (this._companyId && this._companyId !== 0) {
+            return this._companyId;
+        }
+        await this.getMe();
+        if (!this._companyId || this._companyId === 0) {
+            throw new ParasutConfigError('Could not resolve companyId: no companies found in user profile');
+        }
+        return this._companyId;
+    }
+    /**
+     * Resets cached resource instances when companyId changes.
+     */
+    resetResources() {
+        this._trackableJobs = undefined;
+        this._accounts = undefined;
+        this._contacts = undefined;
+        this._products = undefined;
+        this._salesInvoices = undefined;
+        this._salesOffers = undefined;
+        this._purchaseBills = undefined;
+        this._eArchives = undefined;
+        this._eInvoices = undefined;
+        this._eInvoiceInboxes = undefined;
+        this._eSmms = undefined;
+        this._bankFees = undefined;
+        this._salaries = undefined;
+        this._taxes = undefined;
+        this._employees = undefined;
+        this._inventoryLevels = undefined;
+        this._stockMovements = undefined;
+        this._shipmentDocuments = undefined;
+        this._tags = undefined;
+        this._itemCategories = undefined;
+        this._transactions = undefined;
+    }
+    /**
      * Creates a resource config.
      */
     getResourceConfig() {
         return {
             transport: this.transport,
-            companyId: this.companyId,
+            companyId: this.getCompanyId(),
         };
     }
     // ============================================================================
@@ -146,7 +262,7 @@ export class ParasutClient {
      */
     get trackableJobs() {
         if (!this._trackableJobs) {
-            this._trackableJobs = new TrackableJobsResource(this.transport, this.companyId);
+            this._trackableJobs = new TrackableJobsResource(this.transport, this.getCompanyId());
         }
         return this._trackableJobs;
     }
