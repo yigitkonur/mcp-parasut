@@ -22,11 +22,36 @@ export class EInvoicesResource extends BaseResource {
      * Returns a trackable job ID that must be polled for completion.
      */
     async submit(payload) {
-        const response = await this.transport.post(this.buildPath(), payload);
+        const invoiceRel = payload.data.relationships?.invoice ?? payload.data.relationships?.sales_invoice;
+        const { sales_invoice, ...remainingRelationships } = (payload.data.relationships ?? {});
+        const normalizedPayload = {
+            data: {
+                ...payload.data,
+                relationships: {
+                    ...remainingRelationships,
+                    ...(invoiceRel ? { invoice: { data: { id: invoiceRel.data.id, type: 'sales_invoices' } } } : {}),
+                },
+            },
+        };
+        const response = await this.transport.post(this.buildPath(), normalizedPayload);
         return {
             data: response.data,
             trackableJobId: response.data.id,
         };
+    }
+    async create(payload) {
+        const invoiceRel = payload.data.relationships?.invoice ?? payload.data.relationships?.sales_invoice;
+        const { sales_invoice, ...remainingRelationships } = (payload.data.relationships ?? {});
+        const normalizedPayload = {
+            data: {
+                ...payload.data,
+                relationships: {
+                    ...remainingRelationships,
+                    ...(invoiceRel ? { invoice: { data: { id: invoiceRel.data.id, type: 'sales_invoices' } } } : {}),
+                },
+            },
+        };
+        return this.transport.post(this.buildPath(), normalizedPayload);
     }
     /**
      * Submits an e-invoice and waits for completion.

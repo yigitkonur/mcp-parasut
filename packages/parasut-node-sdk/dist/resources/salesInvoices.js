@@ -19,13 +19,13 @@ export class SalesInvoicesResource extends BaseResource {
      * Archives a sales invoice.
      */
     async archive(id) {
-        return this.transport.post(this.buildPath(id, '/archive'));
+        return this.transport.patch(this.buildPath(id, '/archive'));
     }
     /**
      * Unarchives a sales invoice.
      */
     async unarchive(id) {
-        return this.transport.post(this.buildPath(id, '/unarchive'));
+        return this.transport.patch(this.buildPath(id, '/unarchive'));
     }
     /**
      * Cancels a sales invoice.

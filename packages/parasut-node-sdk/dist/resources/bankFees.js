@@ -13,10 +13,10 @@ export class BankFeesResource extends BaseResource {
         });
     }
     async archive(id) {
-        return this.transport.post(this.buildPath(id, '/archive'));
+        return this.transport.patch(this.buildPath(id, '/archive'));
     }
     async unarchive(id) {
-        return this.transport.post(this.buildPath(id, '/unarchive'));
+        return this.transport.patch(this.buildPath(id, '/unarchive'));
     }
     async pay(id, payload) {
         return this.transport.post(this.buildPath(id, '/payments'), payload);

@@ -336,6 +336,7 @@ export async function handleCreateSalary(args: unknown): Promise<ToolResponse> {
         attributes: {
           issue_date: issueDate,
           due_date: issueDate,
+          currency: 'TRL',
           description: params.description ?? 'Salary',
           net_total: params.amount,
         },

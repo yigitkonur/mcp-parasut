@@ -12,6 +12,7 @@ export interface SalaryAttributes {
     readonly archived?: boolean;
     readonly remaining?: number;
     description: string;
+    currency?: 'TRL' | 'USD' | 'EUR' | 'GBP';
     issue_date: string;
     due_date: string;
     net_total: number;
@@ -34,7 +35,9 @@ export declare class SalariesResource extends BaseResource<Salary, SalaryAttribu
             attributes: {
                 date: string;
                 amount: number;
+                description?: string;
                 notes?: string;
+                account_id?: number;
             };
             relationships?: {
                 account?: {

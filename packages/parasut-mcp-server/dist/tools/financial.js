@@ -271,13 +271,26 @@ export async function handleCreateBankFee(args) {
                     description: params.description ?? 'Bank fee',
                     net_total: params.amount,
                 },
-                relationships: {
-                    account: {
-                        data: { id: params.account_id, type: 'accounts' },
-                    },
-                },
             },
         });
+        if (params.account_id && response.data?.id) {
+            await client.bankFees.pay(response.data.id, {
+                data: {
+                    type: 'payments',
+                    attributes: {
+                        date: issueDate,
+                        amount: params.amount,
+                        description: params.description ?? 'Bank fee',
+                        account_id: Number(params.account_id),
+                    },
+                    relationships: {
+                        account: {
+                            data: { id: params.account_id, type: 'accounts' },
+                        },
+                    },
+                },
+            });
+        }
         return formatCreated('Bank Fee', {
             id: response.data.id,
             amount: params.amount,

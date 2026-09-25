@@ -75,7 +75,9 @@ export interface SalesInvoiceFilters {
 export interface PaymentAttributes {
   date: string;
   amount: number;
+  description?: string;
   notes?: string;
+  account_id?: number;
   exchange_rate?: number;
   payment_method_id?: number;
 }
@@ -101,7 +103,7 @@ export class SalesInvoicesResource extends BaseResource<
    * Archives a sales invoice.
    */
   async archive(id: string | number): Promise<JsonApiResponse<SalesInvoice>> {
-    return this.transport.post<JsonApiResponse<SalesInvoice>>(
+    return this.transport.patch<JsonApiResponse<SalesInvoice>>(
       this.buildPath(id, '/archive')
     );
   }
@@ -110,7 +112,7 @@ export class SalesInvoicesResource extends BaseResource<
    * Unarchives a sales invoice.
    */
   async unarchive(id: string | number): Promise<JsonApiResponse<SalesInvoice>> {
-    return this.transport.post<JsonApiResponse<SalesInvoice>>(
+    return this.transport.patch<JsonApiResponse<SalesInvoice>>(
       this.buildPath(id, '/unarchive')
     );
   }

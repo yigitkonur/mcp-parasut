@@ -846,7 +846,8 @@ export async function handleRecordInvoicePayment(args) {
                 attributes: {
                     date: paymentDate,
                     amount: params.amount,
-                    ...(params.description !== undefined && { notes: params.description }),
+                    ...(params.description !== undefined && { description: params.description, notes: params.description }),
+                    ...(params.account_id !== undefined && !isNaN(Number(params.account_id)) && { account_id: Number(params.account_id) }),
                 },
                 ...(params.account_id !== undefined && {
                     relationships: {

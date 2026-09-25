@@ -19,13 +19,13 @@ export class SalesOffersResource extends BaseResource {
      * Archives a sales offer.
      */
     async archive(id) {
-        return this.transport.post(this.buildPath(id, '/archive'));
+        return this.transport.patch(this.buildPath(id, '/archive'));
     }
     /**
      * Unarchives a sales offer.
      */
     async unarchive(id) {
-        return this.transport.post(this.buildPath(id, '/unarchive'));
+        return this.transport.patch(this.buildPath(id, '/unarchive'));
     }
     /**
      * Gets the PDF URL for a sales offer.

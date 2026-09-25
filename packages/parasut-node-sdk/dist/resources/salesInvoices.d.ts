@@ -65,7 +65,9 @@ export interface SalesInvoiceFilters {
 export interface PaymentAttributes {
     date: string;
     amount: number;
+    description?: string;
     notes?: string;
+    account_id?: number;
     exchange_rate?: number;
     payment_method_id?: number;
 }

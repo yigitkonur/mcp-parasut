@@ -42,6 +42,7 @@ const RecordBillPaymentSchema = z.object({
     amount: z.number().positive().describe('Payment amount'),
     date: z.string().optional().describe('Payment date'),
     account_id: z.string().optional().describe('Account ID'),
+    description: z.string().optional().describe('Payment description / note'),
     confirm: z.boolean().optional().describe('⚠️ Set to true to confirm payment. Required to execute.'),
 });
 // ============================================================================
@@ -194,6 +195,7 @@ With confirm=true: Payment record with: payment_id, amount.
                 confirm: { type: 'boolean', description: '⚠️ Set to true to confirm payment. Required to execute.' },
                 date: { type: 'string', description: 'Payment date (YYYY-MM-DD)' },
                 account_id: { type: 'string', description: 'Bank/cash account ID' },
+                description: { type: 'string', description: 'Payment description / note' },
             },
             required: ['bill_id', 'amount'],
         },
@@ -329,7 +331,7 @@ export async function handleCreateBill(args) {
                 attributes: {
                     item_type: 'invoice',
                     issue_date: issueDate,
-                    ...(params.due_date !== undefined && { due_date: params.due_date }),
+                    due_date: params.due_date ?? issueDate,
                     ...(params.invoice_no !== undefined && { invoice_no: params.invoice_no }),
                     currency: params.currency,
                 },
@@ -390,6 +392,8 @@ export async function handleRecordBillPayment(args) {
                 attributes: {
                     date: paymentDate,
                     amount: params.amount,
+                    ...(params.description !== undefined && { description: params.description, notes: params.description }),
+                    ...(params.account_id !== undefined && !isNaN(Number(params.account_id)) && { account_id: Number(params.account_id) }),
                 },
                 ...(params.account_id !== undefined && {
                     relationships: {

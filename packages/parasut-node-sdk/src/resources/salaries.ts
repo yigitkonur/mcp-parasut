@@ -14,6 +14,7 @@ export interface SalaryAttributes {
   readonly archived?: boolean;
   readonly remaining?: number;
   description: string;
+  currency?: 'TRL' | 'USD' | 'EUR' | 'GBP';
   issue_date: string;
   due_date: string;
   net_total: number;
@@ -43,13 +44,13 @@ export class SalariesResource extends BaseResource<
   }
 
   async archive(id: string | number): Promise<JsonApiResponse<Salary>> {
-    return this.transport.post<JsonApiResponse<Salary>>(
+    return this.transport.patch<JsonApiResponse<Salary>>(
       this.buildPath(id, '/archive')
     );
   }
 
   async unarchive(id: string | number): Promise<JsonApiResponse<Salary>> {
-    return this.transport.post<JsonApiResponse<Salary>>(
+    return this.transport.patch<JsonApiResponse<Salary>>(
       this.buildPath(id, '/unarchive')
     );
   }
@@ -59,7 +60,13 @@ export class SalariesResource extends BaseResource<
     payload: {
       data: {
         type: 'payments';
-        attributes: { date: string; amount: number; notes?: string };
+        attributes: {
+          date: string;
+          amount: number;
+          description?: string;
+          notes?: string;
+          account_id?: number;
+        };
         relationships?: { account?: { data: { id: string; type: 'accounts' } } };
       };
     }

@@ -36,7 +36,9 @@ export declare class BankFeesResource extends BaseResource<BankFee, BankFeeAttri
             attributes: {
                 date: string;
                 amount: number;
+                description?: string;
                 notes?: string;
+                account_id?: number;
             };
             relationships?: {
                 account?: {

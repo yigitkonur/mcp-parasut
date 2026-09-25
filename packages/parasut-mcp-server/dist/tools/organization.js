@@ -311,6 +311,7 @@ export async function handleCreateSalary(args) {
                 attributes: {
                     issue_date: issueDate,
                     due_date: issueDate,
+                    currency: 'TRL',
                     description: params.description ?? 'Salary',
                     net_total: params.amount,
                 },

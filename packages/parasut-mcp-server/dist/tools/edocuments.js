@@ -339,7 +339,7 @@ export async function handleSendEInvoice(args) {
                     ...(params.note !== undefined && { note: params.note }),
                 },
                 relationships: {
-                    sales_invoice: {
+                    invoice: {
                         data: { id: params.invoice_id, type: 'sales_invoices' },
                     },
                 },

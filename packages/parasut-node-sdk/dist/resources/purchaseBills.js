@@ -19,13 +19,13 @@ export class PurchaseBillsResource extends BaseResource {
      * Archives a purchase bill.
      */
     async archive(id) {
-        return this.transport.post(this.buildPath(id, '/archive'));
+        return this.transport.patch(this.buildPath(id, '/archive'));
     }
     /**
      * Unarchives a purchase bill.
      */
     async unarchive(id) {
-        return this.transport.post(this.buildPath(id, '/unarchive'));
+        return this.transport.patch(this.buildPath(id, '/unarchive'));
     }
     /**
      * Cancels a purchase bill.
