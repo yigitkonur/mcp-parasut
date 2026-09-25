@@ -1,88 +1,86 @@
 # @yigitkonur/parasut-mcp-server
 
-[![npm version](https://img.shields.io/npm/v/@yigitkonur/parasut-mcp-server.svg)](https://www.npmjs.com/package/@yigitkonur/parasut-mcp-server)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/@yigitkonur/parasut-mcp-server.svg?style=flat-square)](https://www.npmjs.com/package/@yigitkonur/parasut-mcp-server)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-> **UNOFFICIAL** MCP (Model Context Protocol) Server for the [Paraşüt](https://www.parasut.com/) API.
+> **UNOFFICIAL** Model Context Protocol (MCP) Server for the [Paraşüt](https://www.parasut.com/) API V4.
 >
 > **Not affiliated with Paraşüt.** This is a community-maintained project.
 
-Use Claude AI to manage your Turkish accounting - invoices, contacts, products, e-fatura, and financial operations through natural conversation.
+Use Claude AI, Cursor, or any MCP client to manage your Turkish accounting: invoices, contacts, products, bank/cash accounts, e-fatura, and financial operations through natural conversation.
+
+---
 
 ## Features
 
-- **34 AI-Optimized Tools** - Intent-first design, not 1:1 API mapping
-- **Confirmation Patterns** - Preview mode before executing financial operations
-- **Double Confirmation** - Extra safety for irreversible e-invoice submissions to GİB
-- **Smart Responses** - Every response includes next-step guidance
-- **Error Recovery** - Helpful error messages with fix instructions
-- **Turkish E-Invoicing** - Full support for e-Fatura, e-Arşiv, e-SMM
+- **34 AI-Optimized Tools** — Intent-first design covering all core accounting workflows.
+- **Preview & Confirmation Pattern** — Read-only dry-run by default for all write/mutation operations (`confirm=true` required).
+- **Double Confirmation for GİB Submissions** — Mandatory double confirmation (`confirm=true` and `i_understand_this_is_irreversible="YES"`) for official e-invoices, e-archives, and e-SMM.
+- **Token-Based & OAuth Auth** — Support for both username/password flow and pre-generated access/refresh tokens.
+- **Automatic Company ID Auto-Discovery** — Discovers your company ID automatically via `GET /v4/me` if not explicitly provided.
+- **Transparent 401 Token Refresh** — Automatically handles OAuth token expirations and retries requests seamlessly.
+- **Smart Responses with Guided Next Steps** — Every tool response suggests context-aware next actions.
 
-## Installation
+---
 
-### Global Install (Recommended)
+## Installation & Running
 
-```bash
-pnpm add -g @yigitkonur/parasut-mcp-server
-```
-
-### Or use with npx
-
+### Using `npx` (Recommended)
 ```bash
 npx @yigitkonur/parasut-mcp-server
 ```
 
+### Global Install
+```bash
+pnpm add -g @yigitkonur/parasut-mcp-server
+# or
+npm install -g @yigitkonur/parasut-mcp-server
+```
+
+---
+
 ## Configuration
 
-### Environment Variables
+The server supports two authentication modes.
 
+### Option 1: Username & Password (OAuth2 Password Flow)
 ```bash
-# Required
-PARASUT_COMPANY_ID=123456
-PARASUT_CLIENT_ID=your-client-id
-PARASUT_CLIENT_SECRET=your-client-secret
-PARASUT_USERNAME=your-username
-PARASUT_PASSWORD=your-password
-
-# Optional
-PARASUT_BASE_URL=https://api.parasut.com/v4
-DEBUG=true
+PARASUT_CLIENT_ID="your-client-id"
+PARASUT_CLIENT_SECRET="your-client-secret"
+PARASUT_USERNAME="your-email@example.com"
+PARASUT_PASSWORD="your-password"
+PARASUT_COMPANY_ID="123456" # Optional: Auto-discovered if omitted
 ```
+
+### Option 2: Token-Based Auth (Access Token & Refresh Token)
+```bash
+PARASUT_ACCESS_TOKEN="your-access-token"
+PARASUT_REFRESH_TOKEN="your-refresh-token" # Optional: Enables auto 401 refresh
+PARASUT_CLIENT_ID="your-client-id"         # Required for refresh
+PARASUT_CLIENT_SECRET="your-client-secret" # Required for refresh
+PARASUT_COMPANY_ID="123456"               # Optional
+```
+
+### Optional Settings
+```bash
+PARASUT_BASE_URL="https://api.parasut.com/v4" # Default
+DEBUG="false"                                 # Set to "true" for debug logs on stderr
+```
+
+---
+
+## Client Setup
 
 ### Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "parasut": {
-      "command": "parasut-mcp",
-      "env": {
-        "PARASUT_COMPANY_ID": "123456",
-        "PARASUT_CLIENT_ID": "your-client-id",
-        "PARASUT_CLIENT_SECRET": "your-client-secret",
-        "PARASUT_USERNAME": "your-username",
-        "PARASUT_PASSWORD": "your-password"
-      }
-    }
-  }
-}
-```
-
-### Claude Code
-
-Add to your MCP settings:
-
+Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "parasut": {
       "command": "npx",
-      "args": ["@yigitkonur/parasut-mcp-server"],
+      "args": ["-y", "@yigitkonur/parasut-mcp-server"],
       "env": {
-        "PARASUT_COMPANY_ID": "123456",
         "PARASUT_CLIENT_ID": "your-client-id",
         "PARASUT_CLIENT_SECRET": "your-client-secret",
         "PARASUT_USERNAME": "your-username",
@@ -93,219 +91,97 @@ Add to your MCP settings:
 }
 ```
 
-## Available Tools (34 total)
-
-### Contacts (4 tools)
-
-| Tool | Description |
-|------|-------------|
-| `search_contacts` | Search customers/suppliers by name, email, or tax number |
-| `get_contact` | Get detailed contact information with balance |
-| `create_contact` | Create a new customer or supplier |
-| `update_contact` | Update contact information |
-
-### Sales Invoices (7 tools)
-
-| Tool | Description |
-|------|-------------|
-| `search_invoices` | Search invoices by customer, date, or status |
-| `get_invoice` | Get invoice details with line items and payments |
-| `create_invoice` | Create a new sales invoice (requires confirmation) |
-| `cancel_invoice` | Cancel an invoice (requires confirmation) |
-| `recover_invoice` | Recover a cancelled invoice |
-| `invoice_pdf` | Generate PDF for an invoice |
-| `record_invoice_payment` | Record payment received (requires confirmation) |
-
-### Purchase Bills (4 tools)
-
-| Tool | Description |
-|------|-------------|
-| `search_bills` | Search purchase bills/expenses |
-| `get_bill` | Get bill details |
-| `create_bill` | Create a new purchase bill (requires confirmation) |
-| `record_bill_payment` | Record payment to supplier (requires confirmation) |
-
-### Products (4 tools)
-
-| Tool | Description |
-|------|-------------|
-| `search_products` | Search products and services |
-| `get_product` | Get product details with inventory |
-| `create_product` | Create a new product |
-| `update_product` | Update product information |
-
-### E-Documents (4 tools)
-
-| Tool | Description |
-|------|-------------|
-| `check_einvoice_inbox` | Check if contact is e-invoice registered |
-| `send_einvoice` | Send invoice as e-Fatura (DOUBLE confirmation - irreversible!) |
-| `send_earchive` | Send invoice as e-Arşiv (DOUBLE confirmation - irreversible!) |
-| `send_esmm` | Send invoice as e-SMM (DOUBLE confirmation - irreversible!) |
-
-### Financial (4 tools)
-
-| Tool | Description |
-|------|-------------|
-| `list_accounts` | List bank/cash accounts with balances |
-| `search_transactions` | Search financial transactions |
-| `create_bank_fee` | Record a bank fee (requires confirmation) |
-| `get_financial_summary` | Get receivables/payables overview |
-
-### Inventory (2 tools)
-
-| Tool | Description |
-|------|-------------|
-| `get_stock_levels` | Get current inventory levels |
-| `search_stock_movements` | Search stock movement history |
-
-### Organization (5 tools)
-
-| Tool | Description |
-|------|-------------|
-| `list_categories` | List item categories |
-| `list_tags` | List tags for organization |
-| `list_employees` | List employees |
-| `create_salary` | Record salary payment (requires confirmation) |
-| `create_tax` | Record tax payment (requires confirmation) |
-
-## Safety Features
-
-### Confirmation Pattern
-
-Financial operations require explicit confirmation:
-
-```
-User: Create an invoice for 5000 TL to Acme Corp
-
-Claude: I'll create this invoice. Here's the preview:
-- Customer: Acme Corp
-- Amount: 5000 TL
-- Net: 5000 TL, VAT: 1000 TL, Total: 6000 TL
-
-⚠️ Call again with confirm=true to proceed.
-
-User: Yes, confirm it
-
-Claude: [Executes with confirm=true]
-✅ Invoice #INV-2024-001 created successfully.
+### Cursor
+Add under `.cursor/mcp.json` or Cursor MCP settings:
+```json
+{
+  "mcpServers": {
+    "parasut": {
+      "command": "npx",
+      "args": ["-y", "@yigitkonur/parasut-mcp-server"],
+      "env": {
+        "PARASUT_CLIENT_ID": "your-client-id",
+        "PARASUT_CLIENT_SECRET": "your-client-secret",
+        "PARASUT_USERNAME": "your-username",
+        "PARASUT_PASSWORD": "your-password"
+      }
+    }
+  }
+}
 ```
 
-### Double Confirmation for E-Documents
+---
 
-E-invoices submitted to GİB (Turkish Tax Authority) are **irreversible**:
+## Available Tools (34 Araç - Tam Türkçe Liste)
 
-```
-User: Send invoice #123 as e-fatura
+### 1. Kişiler / Cari Hesaplar (Contacts - 4 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `search_contacts` | 🔍 | Müşteri veya tedarikçileri isim, VKN/TCKN, e-posta veya şehre göre arar. |
+| `get_contact` | 🔍 | Belirtilen cari kartın tüm detaylarını, adres ve bakiye bilgilerini getirir. |
+| `create_contact` | ⚠️ | Yeni bir müşteri/tedarikçi kartı oluşturur (`confirm=true` gerektirir). |
+| `update_contact` | ⚠️ | Mevcut cari kartın iletişim ve fatura bilgilerini günceller (`PUT /contacts/{id}`). |
 
-Claude: ⚠️🚨 IRREVERSIBLE OPERATION 🚨⚠️
+### 2. Satış Faturaları (Sales Invoices - 7 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `search_invoices` | 🔍 | Faturaları müşteri, fatura numarası, tarih ve ödeme durumuna göre sorgular. |
+| `get_invoice` | 🔍 | Satış faturasının detaylarını, kalemlerini ve bağlı e-belgesini getirir. |
+| `create_invoice` | ⚠️ | Yeni satış faturası oluşturur (`confirm=true` gerektirir). |
+| `cancel_invoice` | ⚠️ | Henüz resmileşmemiş faturayı iptal eder veya siler (`DELETE /sales_invoices/{id}`). |
+| `recover_invoice` | ⚠️ | İptal edilen faturayı tekrar aktif hale getirir (`PATCH /sales_invoices/{id}/recover`). |
+| `invoice_pdf` | 🔍 | Faturanın resmî e-Arşiv veya e-Fatura PDF bağlantısını döner. |
+| `record_invoice_payment` | ⚠️ | Satış faturasına tahsilat (ödeme) işler (`confirm=true` gerektirir). |
 
-This will submit to GİB (Tax Authority) and CANNOT be undone!
+### 3. Alış Faturaları & Gider Fişleri (Purchase Bills - 4 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `search_bills` | 🔍 | Alış faturalarını ve tedarikçi giderlerini filtreler. |
+| `get_bill` | 🔍 | Alış faturasının ve masraf kalemlerinin detayını getirir. |
+| `create_bill` | ⚠️ | Yeni alış faturası/masraf fişi kaydeder (`confirm=true` gerektirir). |
+| `record_bill_payment` | ⚠️ | Tedarikçiye yapılan ödemeyi kaydeder (`confirm=true` gerektirir). |
 
-To proceed, you must:
-1. Set confirm=true
-2. Set i_understand_this_is_irreversible="YES"
+### 4. Ürünler & Hizmetler (Products - 4 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `search_products` | 🔍 | Ürün ve hizmetleri isim veya stok koduna göre arar. |
+| `get_product` | 🔍 | Ürünün alış/satış fiyatı, birimi ve KDV oranını getirir. |
+| `create_product` | ⚠️ | Yeni ürün veya hizmet kartı açar (`confirm=true` gerektirir). |
+| `update_product` | ⚠️ | Ürün kartı bilgilerini günceller (`PUT /products/{id}`). |
 
-User: I understand, proceed with both confirmations
+### 5. Resmî E-Belgeler (E-Documents - 4 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `check_einvoice_inbox` | 🔍 | VKN/TCKN numarasının GİB e-Fatura mükellefiyetini ve posta kutusunu denetler. |
+| `send_einvoice` | 🚨 | Satış faturasını GİB e-Fatura olarak gönderir (**Geri alınamaz, Çift Onay**). |
+| `send_earchive` | 🚨 | Satış faturasını resmî e-Arşiv olarak düzenler ve GİB'e iletir (**Çift Onay**). |
+| `send_esmm` | 🚨 | Elektronik Serbest Meslek Makbuzunu GİB'e iletir (**Çift Onay**). |
 
-Claude: [Executes with both confirmations]
-✅ E-invoice submitted to GİB successfully.
-```
+### 6. Finans & Kasa/Banka (Financial - 4 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `list_accounts` | 🔍 | Kasa, banka ve POS hesaplarının güncel bakiyelerini listeler. |
+| `search_transactions` | 🔍 | Banka/kasa hesap hareketlerini görüntüler. |
+| `create_bank_fee` | ⚠️ | Banka masrafı veya komisyon kaydı oluşturur (`confirm=true` gerektirir). |
+| `get_financial_summary` | 🔍 | Toplam nakit, bekleyen alacak ve ödenecek borçların finansal özetini çıkarır. |
 
-## Example Conversations
+### 7. Stok & Depo (Inventory - 2 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `get_stock_levels` | 🔍 | Ürünlerin depolardaki anlık stok seviyelerini listeler. |
+| `search_stock_movements` | 🔍 | Stok giriş ve çıkış geçmişini listeler. |
 
-### Create and Send Invoice
+### 8. Organizasyon & Bordro (Organization - 5 tools)
+| Araç (Tool) | Mod | Açıklama (Türkçe) |
+|---|:---:|---|
+| `list_categories` | 🔍 | Ürün ve masraf kategorilerini hiyerarşik olarak listeler. |
+| `list_tags` | 🔍 | Gruplama etiketlerini listeler. |
+| `list_employees` | 🔍 | Şirket çalışanlarını listeler. |
+| `create_salary` | ⚠️ | Personele maaş/avans ödemesi kaydeder (`confirm=true` gerektirir). |
+| `create_tax` | ⚠️ | KDV, stopaj veya SGK vergi ödemesini kaydeder (`confirm=true` gerektirir). |
 
-```
-User: Create an invoice for 10,000 TL consulting services to ABC Company,
-      then send it as e-fatura
-
-Claude: I'll help you with that. Let me:
-1. Search for ABC Company
-2. Create the invoice
-3. Check if they're e-invoice registered
-4. Send as e-fatura
-
-[Executes step by step with confirmations]
-```
-
-### Financial Overview
-
-```
-User: What's our current financial position?
-
-Claude: [Uses get_financial_summary]
-
-Financial Summary:
-- Receivables: 125,000 TL (15 open invoices)
-- Payables: 45,000 TL (8 open bills)
-- Net Position: +80,000 TL
-
-Bank Accounts:
-- İş Bankası: 50,000 TL
-- Garanti: 32,000 TL
-```
-
-### Record Payments
-
-```
-User: Record that ABC Company paid 5000 TL for invoice #456
-
-Claude: [Uses record_invoice_payment with preview]
-
-Preview:
-- Invoice: #456
-- Customer: ABC Company
-- Current remaining: 10,000 TL
-- Payment: 5,000 TL
-- New remaining: 5,000 TL
-
-⚠️ Confirm to proceed...
-```
-
-## Design Philosophy
-
-1. **Task-Shaped Tools** - Tools designed around user tasks, not API endpoints
-2. **Under 40 Tools** - Well under the cognitive limit for AI tool selection
-3. **Guided Responses** - Every response includes relevant next steps
-4. **Error Recovery** - Errors explain what went wrong and how to fix it
-5. **Safety First** - Confirmation patterns prevent accidental financial changes
-
-## Development
-
-```bash
-# Clone the repository
-git clone https://github.com/yigitkonur/mcp-parasut.git
-cd mcp-parasut
-
-# Install dependencies
-pnpm install
-# Build
-pnpm build:mcp
-
-# Run locally
-pnpm start --workspace=@yigitkonur/parasut-mcp-server
-
-# Type check
-pnpm typecheck
-```
-
-## Disclaimer
-
-**This is an UNOFFICIAL project.**
-
-- Not affiliated with, endorsed by, or connected to Paraşüt
-- Paraşüt is a trademark of Paraşüt Bilgi Teknolojileri A.Ş.
-- Use at your own risk
-- E-documents submitted to GİB are legally binding and irreversible
+---
 
 ## License
 
-MIT © [Yigit Konur](https://github.com/yigitkonur)
-
-## Links
-
-- [GitHub Repository](https://github.com/yigitkonur/mcp-parasut)
-- [SDK Package](https://www.npmjs.com/package/@yigitkonur/parasut-node-sdk)
-- [Paraşüt API Documentation](https://apidocs.parasut.com/)
-- [MCP Protocol](https://modelcontextprotocol.io/)
+MIT
