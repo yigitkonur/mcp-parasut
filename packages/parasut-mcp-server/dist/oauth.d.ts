@@ -11,6 +11,10 @@
  * - RFC 7009: OAuth 2.0 Token Revocation (/oauth/revoke)
  */
 import type { IncomingMessage } from 'node:http';
+/**
+ * Constant-time string comparison to protect against timing side-channel attacks.
+ */
+export declare function safeTimingEqual(a: string | undefined | null, b: string | undefined | null): boolean;
 export interface OAuthClient {
     client_id: string;
     client_secret?: string | undefined;

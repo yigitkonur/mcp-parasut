@@ -14,7 +14,52 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
 import { type ServerConfig, loadConfig, validateConfig } from './config.js';
 import { createServer } from './server.js';
-import { OAuthServer, renderConsentPage } from './oauth.js';
+import { OAuthServer, renderConsentPage, safeTimingEqual } from './oauth.js';
+
+/**
+ * Reads HTTP request body with strict size enforcement to prevent DoS via memory exhaustion.
+ */
+async function readBodyWithLimit(req: IncomingMessage, maxBytes = 2 * 1024 * 1024): Promise<string> {
+  let body = '';
+  let bytesRead = 0;
+  for await (const chunk of req) {
+    const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytesRead += chunkBuffer.length;
+    if (bytesRead > maxBytes) {
+      const err = new Error('Payload exceeds maximum permitted size of 2MB');
+      (err as any).statusCode = 413;
+      throw err;
+    }
+    body += chunkBuffer.toString('utf8');
+  }
+  return body;
+}
+
+/**
+ * Sliding-window in-memory rate limiter for sensitive authentication endpoints.
+ */
+class SimpleRateLimiter {
+  private requests = new Map<string, number[]>();
+  private readonly windowMs: number;
+  private readonly maxRequests: number;
+
+  constructor(windowMs = 60000, maxRequests = 120) {
+    this.windowMs = windowMs;
+    this.maxRequests = maxRequests;
+  }
+
+  public isRateLimited(key: string): boolean {
+    const now = Date.now();
+    const timestamps = (this.requests.get(key) || []).filter((t) => now - t < this.windowMs);
+    if (timestamps.length >= this.maxRequests) {
+      this.requests.set(key, timestamps);
+      return true;
+    }
+    timestamps.push(now);
+    this.requests.set(key, timestamps);
+    return false;
+  }
+}
 
 export interface HttpServerOptions {
   port?: number | undefined;
@@ -56,6 +101,9 @@ export function createHttpServer(
   // Active stateful session transports keyed by session ID
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
+  // Sliding window rate limiter for authentication and token endpoints
+  const authRateLimiter = new SimpleRateLimiter(60000, 120);
+
   const server = http.createServer(async (req: IncomingMessage, res: ServerResponse) => {
     // 1. CORS headers
     res.setHeader('Access-Control-Allow-Origin', corsOrigin);
@@ -72,6 +120,12 @@ export function createHttpServer(
       'mcp-session-id, mcp-protocol-version'
     );
 
+    // Standard HTTP Security Headers (Defense-in-Depth)
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+
     // Handle preflight OPTIONS
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -82,6 +136,20 @@ export function createHttpServer(
     const hostHeader = req.headers.host ?? `${host}:${port}`;
     const url = new URL(req.url ?? '/', `http://${hostHeader}`);
     const baseUrl = oauthServer.getBaseUrl(req, host, port);
+
+    // Rate limit sensitive OAuth authentication endpoints
+    if (url.pathname === '/oauth/token' || url.pathname === '/oauth/register' || url.pathname === '/oauth/authorize') {
+      const forwarded = req.headers['x-forwarded-for'];
+      const clientIp = (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) || req.socket.remoteAddress || 'unknown';
+      if (authRateLimiter.isRateLimited(clientIp)) {
+        res.writeHead(429, {
+          'Content-Type': 'application/json',
+          'Retry-After': '60',
+        });
+        res.end(JSON.stringify({ error: 'slow_down', error_description: 'Too many requests. Please retry in 60 seconds.' }));
+        return;
+      }
+    }
 
     // 2. Health check endpoints (open for Docker / Traefik / Dokploy health checks)
     if (url.pathname === '/health' || url.pathname === '/healthz' || url.pathname === '/ping') {
@@ -128,7 +196,7 @@ export function createHttpServer(
       if (effectiveApiKey) {
         const authHeader = req.headers.authorization;
         const regToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined;
-        if (!regToken || regToken !== effectiveApiKey) {
+        if (!regToken || !safeTimingEqual(regToken, effectiveApiKey)) {
           const metadataUrl = `${baseUrl}/.well-known/oauth-protected-resource`;
           res.setHeader(
             'WWW-Authenticate',
@@ -142,14 +210,20 @@ export function createHttpServer(
 
       let rawBody = '';
       try {
-        for await (const chunk of req) rawBody += chunk;
+        rawBody = await readBodyWithLimit(req);
         const body = rawBody ? JSON.parse(rawBody) : {};
         const client = oauthServer.registerClient(body);
         res.writeHead(201, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(client));
       } catch (err: any) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'invalid_client_metadata', error_description: err.message }));
+        const status = err.statusCode === 413 ? 413 : 400;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: err.statusCode === 413 ? 'payload_too_large' : 'invalid_client_metadata',
+            error_description: err.message,
+          })
+        );
       }
       return;
     }
@@ -163,7 +237,20 @@ export function createHttpServer(
 
       if (req.method === 'POST') {
         let rawBody = '';
-        for await (const chunk of req) rawBody += chunk;
+        try {
+          rawBody = await readBodyWithLimit(req);
+        } catch (err: any) {
+          const status = err.statusCode === 413 ? 413 : 400;
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: err.statusCode === 413 ? 'payload_too_large' : 'invalid_request',
+              error_description: err.message,
+            })
+          );
+          return;
+        }
+
         if (req.headers['content-type']?.includes('application/x-www-form-urlencoded')) {
           const parsed = new URLSearchParams(rawBody);
           for (const [k, v] of parsed.entries()) params[k] = v;
@@ -211,7 +298,7 @@ export function createHttpServer(
       // If user confirmed authorization or auto-approve requested: verify secret before issuing code
       if (confirm) {
         const providedSecret = params['server_secret'] || params['api_key'] || params['client_secret'];
-        if (effectiveApiKey && (!providedSecret || providedSecret !== effectiveApiKey)) {
+        if (effectiveApiKey && (!providedSecret || !safeTimingEqual(providedSecret, effectiveApiKey))) {
           const client = oauthServer.getClient(clientId);
           const clientName = client?.client_name || clientId;
           const html = renderConsentPage({
@@ -288,10 +375,16 @@ export function createHttpServer(
 
       let rawBody = '';
       try {
-        for await (const chunk of req) rawBody += chunk;
-      } catch {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'invalid_request', error_description: 'Failed to read request' }));
+        rawBody = await readBodyWithLimit(req);
+      } catch (err: any) {
+        const status = err.statusCode === 413 ? 413 : 400;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: err.statusCode === 413 ? 'payload_too_large' : 'invalid_request',
+            error_description: err.message || 'Failed to read request',
+          })
+        );
         return;
       }
 
@@ -429,7 +522,7 @@ export function createHttpServer(
     if (url.pathname === '/oauth/revoke') {
       let rawBody = '';
       try {
-        for await (const chunk of req) rawBody += chunk;
+        rawBody = await readBodyWithLimit(req);
       } catch {
         // Continue
       }
@@ -483,7 +576,7 @@ export function createHttpServer(
     if (authRequired) {
       const isValid = Boolean(
         bearerToken && (
-          (effectiveApiKey && bearerToken === effectiveApiKey) ||
+          (effectiveApiKey && safeTimingEqual(bearerToken, effectiveApiKey)) ||
           oauthServer.verifyAccessToken(bearerToken)
         )
       );
@@ -509,7 +602,7 @@ export function createHttpServer(
       }
     } else if (bearerToken) {
       // Optional auth provided: validate if supplied
-      const isValid = (effectiveApiKey && bearerToken === effectiveApiKey) || oauthServer.verifyAccessToken(bearerToken);
+      const isValid = (effectiveApiKey && safeTimingEqual(bearerToken, effectiveApiKey)) || oauthServer.verifyAccessToken(bearerToken);
       if (!isValid) {
         const metadataUrl = `${baseUrl}/.well-known/oauth-protected-resource`;
         res.setHeader(
@@ -534,15 +627,17 @@ export function createHttpServer(
     if (req.method === 'POST') {
       let body = '';
       try {
-        for await (const chunk of req) {
-          body += chunk;
-        }
-      } catch {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
+        body = await readBodyWithLimit(req);
+      } catch (err: any) {
+        const status = err.statusCode === 413 ? 413 : 400;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
             jsonrpc: '2.0',
-            error: { code: -32700, message: 'Request stream read error' },
+            error: {
+              code: err.statusCode === 413 ? -32000 : -32700,
+              message: err.message || 'Request stream read error',
+            },
             id: null,
           })
         );

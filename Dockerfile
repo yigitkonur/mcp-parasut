@@ -31,6 +31,8 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY --from=builder /app /app
 
+USER node
+
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

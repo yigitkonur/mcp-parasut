@@ -10,7 +10,21 @@
  * - RFC 6750: Bearer Token Usage & WWW-Authenticate 401 Challenge
  * - RFC 7009: OAuth 2.0 Token Revocation (/oauth/revoke)
  */
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+/**
+ * Constant-time string comparison to protect against timing side-channel attacks.
+ */
+export function safeTimingEqual(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') {
+        return false;
+    }
+    const bufA = Buffer.from(a, 'utf8');
+    const bufB = Buffer.from(b, 'utf8');
+    if (bufA.length !== bufB.length) {
+        return false;
+    }
+    return timingSafeEqual(bufA, bufB);
+}
 export class OAuthServer {
     clients = new Map();
     authCodes = new Map();
@@ -160,7 +174,7 @@ export class OAuthServer {
         const calculatedChallenge = createHash('sha256')
             .update(params.codeVerifier)
             .digest('base64url');
-        if (calculatedChallenge !== authCode.codeChallenge) {
+        if (!safeTimingEqual(calculatedChallenge, authCode.codeChallenge)) {
             throw new Error('invalid_grant: PKCE verification failed');
         }
         // Single-use code consumption
@@ -198,7 +212,7 @@ export class OAuthServer {
         if (!expectedSecret) {
             throw new Error('unauthorized_client: Client credentials grant is not permitted without a configured server secret');
         }
-        if (!clientSecret || clientSecret !== expectedSecret) {
+        if (!clientSecret || !safeTimingEqual(clientSecret, expectedSecret)) {
             throw new Error('invalid_client: Client secret required and must match server secret');
         }
         return this.issueTokens(clientId, scope);
